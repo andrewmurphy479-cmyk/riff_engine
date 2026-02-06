@@ -1,0 +1,69 @@
+● I've significantly improved the synthesis. The new version includes:
+
+  Pluck Excitation
+  - Realistic pick/finger attack shape
+  - Filtered noise for natural randomness
+  - Pre-filtering for warmth
+
+  String Modeling
+  - Different characteristics for bass/mid/treble strings
+  - Bass strings: warmer tone, longer sustain
+  - Treble strings: brighter, faster decay
+  - String stiffness (inharmonicity) for realistic timbre
+
+  Body Resonance
+  - Multiple body cavity resonance frequencies (98Hz, 196Hz, 294Hz)
+  - Simulates guitar body vibration
+
+  Processing
+  - Gentle saturation for analog warmth
+  - Proper attack envelope
+  - High-frequency roll-off
+
+  Restart the app to clear the tone cache and hear the new sounds.
+
+  If it's still not good enough, here's how to add real samples:
+
+  1. Go to https://freesound.org and search for "acoustic guitar single note"
+  2. Download CC0 licensed samples for notes E2 through E5
+  3. Name them like 40.wav, 41.wav, etc. (MIDI note numbers)
+  4. Place in riff-engine-mobile/assets/samples/guitar/
+  5. I'll update the code to load them
+
+  Try the improved synthesis first and let me know how it sounds!
+
+✻ Baked for 2m 13s
+
+❯ Should I just record myself playing notes on the guitar on my phone?
+
+● That's a great idea! Your own guitar would sound authentic and there's no licensing issues.
+
+  Here's a simple approach:
+
+  Minimal Recording (6 samples)
+  Just record the 6 open strings:
+  - Low E (6th string) → save as 40.wav
+  - A (5th string) → save as 45.wav
+  - D (4th string) → save as 50.wav
+  - G (3rd string) → save as 55.wav
+  - B (2nd string) → save as 59.wav
+  - High E (1st string) → save as 64.wav
+
+  Recording Tips:
+  - Quiet room, phone close to sound hole
+  - Let each note ring for 2-3 seconds
+  - Pick/pluck at medium strength
+  - Trim silence from the start of each file
+
+  Tools to trim/convert:
+  - iOS: GarageBand can export WAV
+  - Or use free online tool like https://audiotrimmer.com
+
+  Once you have the WAV files, drop them in:
+  riff-engine-mobile/assets/samples/guitar/
+
+  Then I'll update the code to load and pitch-shift them for all the other notes. Want to try it?
+
+❯ Ok I will do this in a little bit. For now can we work on continuing to make the output better... it still feels
+  like it isn't generating a true great riff that you would hear in a song with a nice melody and beautiful chord
+  transitions.

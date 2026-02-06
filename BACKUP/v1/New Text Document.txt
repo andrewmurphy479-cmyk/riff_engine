@@ -1,0 +1,624 @@
+from multiprocessing import pool
+from tab_renderer import render_tab
+import random
+import sys
+import os
+
+DEBUG = True
+
+from datetime import datetime
+
+def choose_from_menu(title, options, default_key):
+    print("\n" + title)
+    keys = list(options.keys())
+
+    for i, k in enumerate(keys, start=1):
+        print(f"{i}) {k}")
+
+    choice = input(f"Choose 1-{len(keys)} (Enter for {default_key}): ").strip()
+
+    if choice == "":
+        return default_key
+
+    if choice.isdigit():
+        idx = int(choice)
+        if 1 <= idx <= len(keys):
+            return keys[idx - 1]
+
+    print(f"Invalid choice. Using default: {default_key}")
+    return default_key
+
+
+DIFFICULTIES = {
+    "beginner": {
+        "fill_multiplier": 0.4,
+        "allowed_fill_steps": [14],
+        "fill_attempts_per_bar": 1
+    },
+    "intermediate": {
+        "fill_multiplier": 1.0,
+        "allowed_fill_steps": [6, 14],
+        "fill_attempts_per_bar": 1
+    },
+    "advanced": {
+        "fill_multiplier": 1.4,
+        "allowed_fill_steps": [6, 10, 14],
+        "fill_attempts_per_bar": 2
+    }
+}
+
+
+
+MOODS = {
+    "uplifting": {
+        "swap_prob": 0.33,
+        "repeat_prob": 0.20,
+        "fill_prob": 0.45,
+        "fill_steps": [6, 14],
+        "tempo_range": (90, 115),
+    },
+    "sad": {
+        "swap_prob": 0.15,
+        "repeat_prob": 0.10,
+        "fill_prob": 0.15,
+        "fill_steps": [14],
+        "tempo_range": (60, 85),
+    },
+    "mysterious": {
+        "swap_prob": 0.40,
+        "repeat_prob": 0.15,
+        "fill_prob": 0.35,
+        "fill_steps": [6, 10, 14],
+        "tempo_range": (70, 100),
+    }
+}
+
+
+
+# Very simple "chord shapes" for fingerstyle plucks
+# We only need a few treble notes that sound good for the pattern
+CHORD_TREBLE_NOTES = {
+    "Em": [
+        {"string": "G", "fret": 0},
+        {"string": "B", "fret": 0},
+    ],
+    "C": [
+        {"string": "G", "fret": 0},
+        {"string": "B", "fret": 1},
+    ],
+    "G": [
+        {"string": "B", "fret": 0},
+        {"string": "e", "fret": 3},
+    ],
+    "D": [
+        {"string": "B", "fret": 3},
+        {"string": "e", "fret": 2},
+    ],
+}
+
+CHORD_BASS = {
+    "Em": {"string": "E", "fret": 0},
+    "C":  {"string": "A", "fret": 3},
+    "G":  {"string": "E", "fret": 3},
+    "D":  {"string": "D", "fret": 0},
+}
+
+def is_slot_free(used, string, step):
+    return (string, step) not in used
+
+def choose_bass_note(chord_name, difficulty):
+    opts = BASS_OPTIONS[chord_name]
+
+    if difficulty == "beginner":
+        return opts["root"]
+
+    roll = random.random()
+
+    if difficulty == "intermediate":
+        # 70% root, 30% fifth
+        return opts["root"] if roll < 0.70 else opts["fifth"]
+
+    # advanced
+    # 55% root, 45% fifth
+    return opts["root"] if roll < 0.55 else opts["fifth"]
+
+def maybe_add_approach_bass(events, used, current_chord, next_chord, offset):
+    # Only a simple approach for our small chord set:
+    # target next chord root bass note
+    next_root = BASS_OPTIONS[next_chord]["root"]
+
+    approach_step = offset + 15  # last step of bar
+    s = next_root["string"]
+    f = next_root["fret"]
+
+    if is_slot_free(used, s, approach_step):
+        events.append({"string": s, "fret": f, "step": approach_step, "duration": 1})
+        used.add((s, approach_step))
+
+TREBLE_STRINGS = {"e", "B", "G"}
+
+def treble_cost(note, prev_note):
+    """
+    Lower cost = smoother voice leading.
+    Penalize changing strings a bit, and big fret jumps.
+    """
+    if prev_note is None:
+        return 0
+
+    fret_jump = abs(note["fret"] - prev_note["fret"])
+    string_penalty = 0 if note["string"] == prev_note["string"] else 2
+    return fret_jump + string_penalty
+
+
+def choose_voice_led_treble_pair(chord_name, prev_note, mode="normal"):
+    """
+    mode:
+      - "normal": pick two different notes in a smooth order
+      - "swap": swap order vs normal
+      - "repeat": repeat the best single note
+    """
+    cands = CHORD_TREBLE_NOTES[chord_name]  # list of 2 dicts: [{"string":..,"fret":..}, ...]
+
+    # If only one candidate exists (future-proof), repeat it
+    if len(cands) == 1:
+        return cands[0], cands[0]
+
+    a, b = cands[0], cands[1]
+
+    # Decide which note should come first based on cost from previous note
+    if treble_cost(a, prev_note) <= treble_cost(b, prev_note):
+        first_best, second_best = a, b
+    else:
+        first_best, second_best = b, a
+
+    if mode == "normal":
+        return first_best, second_best
+    elif mode == "swap":
+        return second_best, first_best
+    else:  # "repeat"
+        return first_best, first_best
+
+
+def travis_basic(chord_name="Em", bars=2, mood="uplifting", difficulty="intermediate", include_bass=True, prev_treble=None):
+
+    events = []
+
+    if chord_name not in CHORD_TREBLE_NOTES or chord_name not in CHORD_BASS:
+        raise ValueError(f"Unknown chord: {chord_name}")
+    
+    if mood not in MOODS:
+        raise ValueError(f"Unknown mood: {mood}")
+
+    mood_cfg = MOODS[mood]
+
+    if difficulty not in DIFFICULTIES:
+        raise ValueError(f"Unknown difficulty: {difficulty}")
+
+    diff_cfg = DIFFICULTIES[difficulty]
+
+
+
+    bass = choose_bass_note(chord_name, difficulty)
+    treble = CHORD_TREBLE_NOTES[chord_name]
+
+    bass_steps = [0, 8]       # beats 1 and 3
+    treble_steps = [4, 12]    # beats 2 and 4
+
+    # Track which (string, step) we have already used
+    used = set()
+
+    for bar in range(bars):
+        offset = bar * 16
+
+        # Bass on 1 and 3
+        for s in bass_steps:
+            step = offset + s
+            events.append({
+                "string": bass["string"],
+                "fret": bass["fret"],
+                "step": step,
+                "duration": 8
+            })
+            used.add((bass["string"], step))
+
+        # Controlled treble variation
+        roll = random.random()
+        if DEBUG:
+            print(f"[DEBUG] chord={chord_name} bar={bar} roll={roll:.3f}")
+
+                # Mood-based treble variation mode
+        swap_prob = mood_cfg["swap_prob"]
+        repeat_prob = mood_cfg["repeat_prob"]
+
+        if roll < (1 - swap_prob - repeat_prob):
+            mode = "normal"
+        elif roll < (1 - repeat_prob):
+            mode = "swap"
+        else:
+            mode = "repeat"
+
+        # Voice-led treble selection
+        first, second = choose_voice_led_treble_pair(chord_name, prev_treble, mode=mode)
+
+
+
+        step_a = offset + treble_steps[0]
+        step_b = offset + treble_steps[1]
+
+        events.append({"string": first["string"], "fret": first["fret"], "step": step_a, "duration": 2})
+        used.add((first["string"], step_a))
+
+        events.append({"string": second["string"], "fret": second["fret"], "step": step_b, "duration": 2})
+        used.add((second["string"], step_b))
+
+                # --- SMART FILL NOTES (difficulty controls attempts) ---
+
+        fill_prob = mood_cfg["fill_prob"] * diff_cfg["fill_multiplier"]
+
+        # Only allow steps that BOTH mood and difficulty allow
+        possible_steps = [s for s in mood_cfg["fill_steps"] if s in diff_cfg["allowed_fill_steps"]]
+
+        # How many times we try to add a fill this bar
+        attempts = diff_cfg.get("fill_attempts_per_bar", 1)
+
+        used_fill_steps = set()
+
+        for _ in range(attempts):
+            if not possible_steps:
+                break
+
+            fill_roll = random.random()
+            if fill_roll >= fill_prob:
+                continue
+
+            chosen_step = random.choice(possible_steps)
+
+            # Don't repeat the same fill step in the same bar
+            if chosen_step in used_fill_steps:
+                continue
+            used_fill_steps.add(chosen_step)
+
+            fill_step = offset + chosen_step
+            fill_string = first["string"]
+            fill_fret = first["fret"]
+
+            if is_slot_free(used, fill_string, fill_step):
+                events.append({
+                    "string": fill_string,
+                    "fret": fill_fret,
+                    "step": fill_step,
+                    "duration": 1
+                })
+                used.add((fill_string, fill_step))
+
+
+
+
+    return events
+
+def add_event_if_free(events, used, string, fret, step, duration=1):
+    if (string, step) in used:
+        return False
+    events.append({"string": string, "fret": fret, "step": step, "duration": duration})
+    used.add((string, step))
+    return True
+
+
+def travis_progression(progression, mood="uplifting", difficulty="intermediate"):
+    prev_treble = None
+    events = []
+    used = set()
+
+    for bar_index, chord_name in enumerate(progression):
+        offset = bar_index * 16
+
+        # Generate this bar's treble+fills (no shifting bug)
+        bar_events = travis_basic(
+    chord_name=chord_name,
+    bars=1,
+    mood=mood,
+    difficulty=difficulty,
+    include_bass=True,
+    prev_treble=prev_treble
+)
+
+        treble_events = [ev for ev in bar_events if ev["string"] in TREBLE_STRINGS]
+        if treble_events:
+            last_t = max(treble_events, key=lambda e: e["step"])
+            prev_treble = {"string": last_t["string"], "fret": last_t["fret"]}
+
+
+        # Add bar events (already 0..15 steps) shifted into song timeline
+        for ev in bar_events:
+            step = ev["step"] + offset
+            add_event_if_free(
+                events, used,
+                ev["string"], ev["fret"], step,
+                ev.get("duration", 1)
+            )
+
+        # --- Approach bass into next chord (advanced only) ---
+        if difficulty == "advanced" and bar_index < len(progression) - 1:
+            next_chord = progression[bar_index + 1]
+
+            # 60% chance so it’s common but not constant
+            if random.random() < 0.60:
+                next_root = BASS_OPTIONS[next_chord]["root"]
+                add_event_if_free(
+                    events, used,
+                    next_root["string"], next_root["fret"],
+                    offset + 15,
+                    duration=1
+                )
+
+    return events
+
+
+def avoid_back_to_back_duplicates(chords):
+    fixed = [chords[0]]
+    for c in chords[1:]:
+        if c == fixed[-1]:
+            # swap to a safe alternative if possible (simple v1 rule)
+            alternatives = ["Em", "C", "G", "D"]
+            for alt in alternatives:
+                if alt != fixed[-1]:
+                    fixed.append(alt)
+                    break
+        else:
+            fixed.append(c)
+    return fixed
+
+import itertools
+
+# --- Simple chord tone sets (triads) ---
+CHORD_TONES = {
+    "Em": {"E", "G", "B"},
+    "C":  {"C", "E", "G"},
+    "G":  {"G", "B", "D"},
+    "D":  {"D", "F#", "A"},
+    # If you add later:
+    # "Am": {"A", "C", "E"},
+}
+
+# --- Approx bass MIDI notes (good enough for "distance") ---
+# E2=40, G2=43, A2=45, C3=48, D3=50
+CHORD_BASS_MIDI = {
+    "Em": 40,
+    "G":  43,
+    "C":  48,
+    "D":  50,
+    # "Am": 45,
+}
+
+# Bass note options per chord (string/fret)
+# root = main bass note
+# fifth = strong alternate bass note
+BASS_OPTIONS = {
+    "Em": {
+        "root":  {"string": "E", "fret": 0},  # E
+        "fifth": {"string": "A", "fret": 2},  # B
+    },
+    "C": {
+        "root":  {"string": "A", "fret": 3},  # C
+        "fifth": {"string": "D", "fret": 2},  # G
+    },
+    "G": {
+        "root":  {"string": "E", "fret": 3},  # G
+        "fifth": {"string": "A", "fret": 2},  # B
+    },
+    "D": {
+        "root":  {"string": "D", "fret": 0},  # D
+        "fifth": {"string": "A", "fret": 0},  # A
+    },
+}
+
+def transition_score(a, b):
+    """
+    Higher = smoother.
+    Rewards shared tones, penalizes large bass movement.
+    """
+    # Shared tones reward
+    common = len(CHORD_TONES[a].intersection(CHORD_TONES[b]))
+    common_reward = common * 2  # tweakable
+
+    # Bass movement penalty
+    jump = abs(CHORD_BASS_MIDI[a] - CHORD_BASS_MIDI[b])
+    jump_penalty = jump * 0.6   # tweakable
+
+    # Extra penalty for big leaps
+    big_leap_penalty = 3 if jump >= 7 else 0
+
+    return common_reward - jump_penalty - big_leap_penalty
+
+def progression_score(prog, loop=True):
+    if len(prog) < 2:
+        return 0
+
+    score = 0
+    for i in range(len(prog) - 1):
+        score += transition_score(prog[i], prog[i + 1])
+
+    if loop:
+        score += transition_score(prog[-1], prog[0])
+
+    return score
+
+def smooth_progression(prog, loop=True):
+    """
+    Reorders the SAME chords to maximize smoothness.
+    For 4-chord progressions this is fast (24 permutations).
+    """
+    best = prog
+    best_score = progression_score(prog, loop=loop)
+
+    # For small lengths, brute-force all permutations
+    if len(prog) <= 6:
+        for perm in itertools.permutations(prog):
+            # avoid back-to-back duplicates (you already have this helper)
+            perm = avoid_back_to_back_duplicates(list(perm))
+            s = progression_score(perm, loop=loop)
+            if s > best_score:
+                best_score = s
+                best = list(perm)
+        return best
+
+    # For longer lengths, just return as-is for now (we can improve later)
+    return prog
+
+
+
+def generate_progression(mood, length=4, difficulty="intermediate"):
+    """
+    Returns a list of chord names based on mood.
+    Uses templates + pool generation, then smooths transitions.
+    """
+
+    # Templates + pools
+    if mood == "uplifting":
+        templates = [
+            ["G", "D", "Em", "C"],
+            ["C", "G", "D", "Em"],
+            ["Em", "C", "G", "D"],
+        ]
+        pool = ["G", "D", "Em", "C"]
+
+    elif mood == "sad":
+        templates = [
+            ["Em", "C", "G", "D"],
+            ["C", "Em", "D", "G"],
+            ["Em", "G", "D", "C"],
+        ]
+        pool = ["Em", "C", "G", "D"]
+
+    elif mood == "mysterious":
+        templates = [
+            ["Em", "D", "C", "D"],
+            ["Em", "C", "D", "Em"],
+            ["Em", "D", "Em", "C"],
+        ]
+        pool = ["Em", "D", "C"]
+
+    else:
+        templates = [["Em", "C", "G", "D"]]
+        pool = ["Em", "C", "G", "D"]
+
+    # Difficulty controls stability vs variety
+    template_prob = 0.70
+    if difficulty == "beginner":
+        template_prob = 0.90
+    elif difficulty == "advanced":
+        template_prob = 0.45
+
+    # Choose progression
+    if random.random() < template_prob:
+        # Pick the smoothest template
+        prog = max(templates, key=lambda t: progression_score(t, loop=True))
+    else:
+        # Build from pool, avoiding immediate repeats
+        prog = []
+        while len(prog) < 4:
+            c = random.choice(pool)
+            if len(prog) == 0 or c != prog[-1]:
+                prog.append(c)
+
+        # Smooth the order
+        prog = smooth_progression(prog, loop=True)
+
+    # Adjust length if needed
+    if length != 4:
+        out = []
+        while len(out) < length:
+            out.extend(prog)
+        prog = out[:length]
+
+    # Final safety
+    prog = avoid_back_to_back_duplicates(prog)
+    return prog
+
+
+def save_riff_to_file(mood, difficulty, bpm, progression, tab_text, folder="saved_riffs"):
+    os.makedirs(folder, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"{timestamp}_{mood}_{difficulty}_{bpm}bpm.txt"
+    path = os.path.join(folder, filename)
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"Mood: {mood}\n")
+        f.write(f"Difficulty: {difficulty}\n")
+        f.write(f"Tempo: {bpm} BPM\n")
+        f.write(f"Progression: {' - '.join(progression)}\n\n")
+        f.write(tab_text)
+        f.write("\n")
+
+    return path
+
+# ---- Try it! ----
+# ---------------------------
+# Command-line input handling
+# ---------------------------
+
+
+# If user gave CLI args, use them. Otherwise, show menus.
+mood = "uplifting"
+difficulty = "intermediate"
+
+if len(sys.argv) > 1 and sys.argv[1] in MOODS:
+    mood = sys.argv[1]
+else:
+    mood = choose_from_menu("Choose a mood:", MOODS, "uplifting")
+
+if len(sys.argv) > 2 and sys.argv[2] in DIFFICULTIES:
+    difficulty = sys.argv[2]
+else:
+    difficulty = choose_from_menu("Choose a difficulty:", DIFFICULTIES, "intermediate")
+
+
+bpm_low, bpm_high = MOODS[mood]["tempo_range"]
+bpm = random.randint(bpm_low, bpm_high)
+
+
+# Generate chord progression AFTER mood is known
+progression = generate_progression(mood, length=4, difficulty=difficulty)
+
+print("\n" + "=" * 50)
+print(f"Mood: {mood} | Difficulty: {difficulty} | Tempo: {bpm} BPM")
+print("=" * 50 + "\n")
+
+print(f"Progression: {' - '.join(progression)}\n")
+
+# Generate and render tab
+events = travis_progression(progression, mood=mood, difficulty=difficulty)
+tab_text = render_tab(events, steps=len(progression) * 16, progression=progression)
+save_choice = input("\nType s to save this riff, Enter to continue: ").strip().lower()
+if save_choice == "s":
+    path = save_riff_to_file(mood, difficulty, bpm, progression, tab_text)
+    print(f"Saved to: {path}")
+
+while True:
+    os.system("cls" if os.name == "nt" else "clear")
+
+    bpm_low, bpm_high = MOODS[mood]["tempo_range"]
+    bpm = random.randint(bpm_low, bpm_high)
+
+    progression = generate_progression(mood, length=4, difficulty=difficulty)
+
+    print("\n" + "=" * 50)
+    print(f"Mood: {mood} | Difficulty: {difficulty} | Tempo: {bpm} BPM")
+    print(f"Progression: {' - '.join(progression)}")
+    print("=" * 50 + "\n")
+
+    events = travis_progression(progression, mood=mood, difficulty=difficulty)
+    tab_text = render_tab(events, steps=len(progression) * 16, progression=progression)
+
+    action = input("\n[Enter]=again | s=save | q=quit : ").strip().lower()
+    if action == "q":
+        break
+    elif action == "s":
+        path = save_riff_to_file(mood, difficulty, bpm, progression, tab_text)
+        print(f"Saved to: {path}")
+        input("Press Enter to continue...")
+
+
+
+
+
