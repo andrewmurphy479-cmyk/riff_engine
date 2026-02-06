@@ -15,6 +15,7 @@ import { KnobPanel } from '../components/KnobPanel';
 import { TabDisplay } from '../components/TabDisplay';
 import { PlaybackControls } from '../components/PlaybackControls';
 import { ExportModal } from '../components/ExportModal';
+import { LayerBuilder } from '../components/LayerBuilder';
 import { useAudioEngine } from '../audio/AudioEngine';
 import { useRiffStore } from '../store/useRiffStore';
 import { getAllowedStylesForDifficulty } from '../engine/difficulty';
@@ -36,11 +37,15 @@ export default function HomeScreen() {
     energy,
     currentRiff,
     playbackState,
+    isLayeredMode,
+    progression,
     setMood,
     setStyle,
     setDifficulty,
     setPlaybackState,
     generateNewRiff,
+    getCurrentLayerEvents,
+    getAllLayerEvents,
   } = useRiffStore();
 
   // Use the new audio engine
@@ -49,17 +54,18 @@ export default function HomeScreen() {
     onPlaybackEnd: () => setPlaybackState('stopped'),
   });
 
-  // Generate initial riff on mount
+  // Generate initial riff on mount (only in non-layered mode)
   useEffect(() => {
-    if (!currentRiff) {
+    if (!currentRiff && !isLayeredMode) {
       generateNewRiff();
     }
   }, []);
 
-  // Auto-regenerate on parameter changes (with debounce)
+  // Auto-regenerate on parameter changes (with debounce) - only in non-layered mode
   useEffect(() => {
     if (!currentRiff) return;
     if (isAutoRegeneratingRef.current) return;
+    if (isLayeredMode) return; // Don't auto-regenerate in layered mode
 
     isAutoRegeneratingRef.current = true;
 
@@ -76,13 +82,19 @@ export default function HomeScreen() {
       clearTimeout(timeoutId);
       isAutoRegeneratingRef.current = false;
     };
-  }, [mood, style, tempo, bassMovement, bluesyFeel, complexity, energy, difficulty]);
+  }, [mood, style, tempo, bassMovement, bluesyFeel, complexity, energy, difficulty, isLayeredMode]);
 
   const handlePlay = useCallback(() => {
-    if (currentRiff) {
+    if (isLayeredMode && progression) {
+      // In layered mode, play current layer events
+      const events = getCurrentLayerEvents();
+      if (events.length > 0) {
+        audioEngine.play(events, tempo);
+      }
+    } else if (currentRiff) {
       audioEngine.play(currentRiff.events, currentRiff.tempo);
     }
-  }, [currentRiff, audioEngine]);
+  }, [currentRiff, audioEngine, isLayeredMode, progression, getCurrentLayerEvents, tempo]);
 
   const handleStop = useCallback(() => {
     audioEngine.stop();
@@ -147,19 +159,22 @@ export default function HomeScreen() {
         {/* Customization Panel */}
         <KnobPanel />
 
+        {/* Layer Builder (only in layered mode) */}
+        <LayerBuilder />
+
         {/* Tab Display */}
         <TabDisplay
-          events={currentRiff?.events || []}
-          progression={currentRiff?.progression || []}
+          events={isLayeredMode && progression ? getAllLayerEvents() : (currentRiff?.events || [])}
+          progression={isLayeredMode && progression ? progression : (currentRiff?.progression || [])}
         />
 
         {/* Progression Info */}
-        {currentRiff && (
+        {(currentRiff || (isLayeredMode && progression)) && (
           <View style={styles.infoBar}>
             <Text style={styles.infoText}>
-              {currentRiff.progression.join(' -> ')}
+              {(isLayeredMode && progression ? progression : currentRiff?.progression)?.join(' -> ')}
             </Text>
-            <Text style={styles.tempoText}>{currentRiff.tempo} BPM</Text>
+            <Text style={styles.tempoText}>{tempo} BPM</Text>
           </View>
         )}
       </ScrollView>
@@ -171,15 +186,15 @@ export default function HomeScreen() {
         onStop={handleStop}
         onNewRiff={handleNewRiff}
         onExport={handleExport}
-        disabled={!currentRiff}
+        disabled={!currentRiff && !(isLayeredMode && progression)}
       />
 
       {/* Export Modal */}
       <ExportModal
         visible={showExportModal}
         onClose={() => setShowExportModal(false)}
-        events={currentRiff?.events || []}
-        tempo={currentRiff?.tempo || 100}
+        events={isLayeredMode && progression ? getAllLayerEvents() : (currentRiff?.events || [])}
+        tempo={tempo}
       />
     </SafeAreaView>
   );

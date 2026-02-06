@@ -87,3 +87,23 @@ export interface GeneratedRiff {
 
 // Playback state
 export type PlaybackState = 'stopped' | 'playing' | 'paused';
+
+// Layer types for layered generation
+export type RiffLayer = 'melody' | 'bass' | 'fills';
+
+// Layer state
+export interface LayerState {
+  melody: TabEvent[] | null;
+  bass: TabEvent[] | null;
+  fills: TabEvent[] | null;
+  currentLayer: RiffLayer;
+  isLayerApproved: Record<RiffLayer, boolean>;
+}
+
+// Layered riff - tracks each layer separately
+export interface LayeredRiff {
+  progression: string[];
+  layers: LayerState;
+  tempo: number;
+  config: GeneratorConfig;
+}

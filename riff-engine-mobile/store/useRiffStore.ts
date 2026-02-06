@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Mood, Style, Difficulty, GeneratedRiff, GeneratorConfig, PlaybackState, Preset } from '../engine/types';
+import { Mood, Style, Difficulty, GeneratedRiff, GeneratorConfig, PlaybackState, Preset, RiffLayer, LayerState, TabEvent } from '../engine/types';
 import { generateRiff, getTempoRange } from '../engine/generator';
 import {
   getDifficultyConfig,
@@ -7,6 +7,16 @@ import {
   clampComplexityForDifficulty,
   isStyleAllowedForDifficulty,
 } from '../engine/difficulty';
+import {
+  generateProgressionForRiff,
+  generateMelodyLayer,
+  generateBassLayer,
+  generateFillsLayer,
+  combineLayers,
+  createInitialLayerState,
+  getNextLayer,
+  areAllLayersComplete,
+} from '../engine/layeredGenerator';
 
 interface RiffState {
   // Current settings
@@ -19,8 +29,13 @@ interface RiffState {
   complexity: number;
   energy: number;
 
-  // Generated riff
+  // Generated riff (legacy full generation)
   currentRiff: GeneratedRiff | null;
+
+  // Layered generation
+  isLayeredMode: boolean;
+  progression: string[] | null;
+  layers: LayerState;
 
   // Playback
   playbackState: PlaybackState;
@@ -44,6 +59,15 @@ interface RiffState {
   generateNewRiff: () => void;
   applyPreset: (preset: Preset) => void;
   getConfig: () => GeneratorConfig;
+
+  // Layered generation actions
+  setLayeredMode: (enabled: boolean) => void;
+  startLayeredGeneration: () => void;
+  generateCurrentLayer: () => void;
+  regenerateCurrentLayer: () => void;
+  approveCurrentLayer: () => void;
+  getCurrentLayerEvents: () => TabEvent[];
+  getAllLayerEvents: () => TabEvent[];
 }
 
 export const useRiffStore = create<RiffState>((set, get) => ({
@@ -62,6 +86,11 @@ export const useRiffStore = create<RiffState>((set, get) => ({
   playbackState: 'stopped',
   isCustomizeExpanded: false,
   selectedPresetId: null,
+
+  // Layered generation state
+  isLayeredMode: true, // Default to layered mode
+  progression: null,
+  layers: createInitialLayerState(),
 
   // Setters
   setMood: (mood) => {
@@ -153,5 +182,140 @@ export const useRiffStore = create<RiffState>((set, get) => ({
       complexity: state.complexity,
       energy: state.energy,
     };
+  },
+
+  // Layered generation actions
+  setLayeredMode: (enabled) => set({ isLayeredMode: enabled }),
+
+  startLayeredGeneration: () => {
+    const state = get();
+    const config = state.getConfig();
+
+    // Generate progression first
+    const progression = generateProgressionForRiff(config);
+
+    // Reset layers
+    const layers = createInitialLayerState();
+
+    // Generate first layer (melody)
+    layers.melody = generateMelodyLayer(progression, config);
+    layers.currentLayer = 'melody';
+
+    set({
+      progression,
+      layers,
+      currentRiff: null, // Clear legacy riff
+    });
+  },
+
+  generateCurrentLayer: () => {
+    const state = get();
+    if (!state.progression) return;
+
+    const config = state.getConfig();
+    const layers = { ...state.layers };
+
+    switch (layers.currentLayer) {
+      case 'melody':
+        layers.melody = generateMelodyLayer(state.progression, config);
+        break;
+      case 'bass':
+        layers.bass = generateBassLayer(state.progression, config);
+        break;
+      case 'fills':
+        if (layers.melody && layers.bass) {
+          layers.fills = generateFillsLayer(
+            state.progression,
+            config,
+            layers.melody,
+            layers.bass
+          );
+        }
+        break;
+    }
+
+    set({ layers });
+  },
+
+  regenerateCurrentLayer: () => {
+    // Just regenerate the current layer
+    get().generateCurrentLayer();
+  },
+
+  approveCurrentLayer: () => {
+    const state = get();
+    const layers = { ...state.layers };
+    const currentLayer = layers.currentLayer;
+
+    // Mark current layer as approved
+    layers.isLayerApproved = {
+      ...layers.isLayerApproved,
+      [currentLayer]: true,
+    };
+
+    // Move to next layer
+    const nextLayer = getNextLayer(currentLayer);
+
+    if (nextLayer) {
+      layers.currentLayer = nextLayer;
+
+      // Auto-generate the next layer
+      const config = state.getConfig();
+      switch (nextLayer) {
+        case 'bass':
+          layers.bass = generateBassLayer(state.progression!, config);
+          break;
+        case 'fills':
+          if (layers.melody && layers.bass) {
+            layers.fills = generateFillsLayer(
+              state.progression!,
+              config,
+              layers.melody,
+              layers.bass
+            );
+          }
+          break;
+      }
+    }
+
+    // If all layers complete, build the final riff
+    if (areAllLayersComplete(layers)) {
+      const allEvents = combineLayers(layers);
+      const config = state.getConfig();
+
+      set({
+        layers,
+        currentRiff: {
+          progression: state.progression!,
+          events: allEvents,
+          tempo: config.tempo,
+          config,
+        },
+      });
+    } else {
+      set({ layers });
+    }
+  },
+
+  getCurrentLayerEvents: () => {
+    const state = get();
+    const layers = state.layers;
+
+    // Return events for current layer only
+    switch (layers.currentLayer) {
+      case 'melody':
+        return layers.melody || [];
+      case 'bass':
+        return layers.bass || [];
+      case 'fills':
+        return layers.fills || [];
+      default:
+        return [];
+    }
+  },
+
+  getAllLayerEvents: () => {
+    const state = get();
+    return combineLayers(state.layers);
   },
 }));
