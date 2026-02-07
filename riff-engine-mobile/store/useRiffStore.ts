@@ -40,6 +40,7 @@ interface RiffState {
 
   // Playback
   playbackState: PlaybackState;
+  isLooping: boolean;
 
   // UI state
   isCustomizeExpanded: boolean;
@@ -56,6 +57,7 @@ interface RiffState {
   setEnergy: (value: number) => void;
   setNumBars: (value: number) => void;
   setPlaybackState: (state: PlaybackState) => void;
+  toggleLooping: () => void;
   setCustomizeExpanded: (expanded: boolean) => void;
   toggleCustomizeExpanded: () => void;
   generateNewRiff: () => void;
@@ -92,6 +94,7 @@ export const useRiffStore = create<RiffState>((set, get) => ({
   // Initial state
   currentRiff: null,
   playbackState: 'stopped',
+  isLooping: false,
   isCustomizeExpanded: false,
   selectedPresetId: null,
 
@@ -142,6 +145,8 @@ export const useRiffStore = create<RiffState>((set, get) => ({
   setNumBars: (numBars) => set({ numBars, selectedPresetId: null }),
 
   setPlaybackState: (playbackState) => set({ playbackState }),
+
+  toggleLooping: () => set((state) => ({ isLooping: !state.isLooping })),
 
   setCustomizeExpanded: (isCustomizeExpanded) => set({ isCustomizeExpanded }),
 

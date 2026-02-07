@@ -16,6 +16,7 @@ import { TabDisplay } from '../components/TabDisplay';
 import { PlaybackControls } from '../components/PlaybackControls';
 import { ExportModal } from '../components/ExportModal';
 import { LayerBuilder } from '../components/LayerBuilder';
+import { ModeSelector } from '../components/ModeSelector';
 import { useAudioEngine } from '../audio/AudioEngine';
 import { useRiffStore } from '../store/useRiffStore';
 import { getAllowedStylesForDifficulty } from '../engine/difficulty';
@@ -24,6 +25,8 @@ import { colors, spacing, typography } from '../theme/colors';
 export default function HomeScreen() {
   const router = useRouter();
   const isAutoRegeneratingRef = useRef(false);
+  const handlePlayRef = useRef<() => void>(() => {});
+  const stoppingRef = useRef(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
   const {
@@ -35,8 +38,10 @@ export default function HomeScreen() {
     bluesyFeel,
     complexity,
     energy,
+    numBars,
     currentRiff,
     playbackState,
+    isLooping,
     isLayeredMode,
     progression,
     layers,
@@ -44,24 +49,38 @@ export default function HomeScreen() {
     setStyle,
     setDifficulty,
     setPlaybackState,
+    toggleLooping,
     generateNewRiff,
     getCurrentLayerEvents,
     getAllLayerEvents,
     getPlayableLayerEvents,
   } = useRiffStore();
 
+  // Keep a ref to isLooping so the onPlaybackEnd callback always sees current value
+  const isLoopingRef = useRef(isLooping);
+  isLoopingRef.current = isLooping;
+
   // Use the new audio engine
   const audioEngine = useAudioEngine({
     onPlaybackStart: () => setPlaybackState('playing'),
-    onPlaybackEnd: () => setPlaybackState('stopped'),
+    onPlaybackEnd: () => {
+      if (stoppingRef.current) {
+        stoppingRef.current = false;
+        setPlaybackState('stopped');
+      } else if (isLoopingRef.current) {
+        setTimeout(() => handlePlayRef.current(), 50);
+      } else {
+        setPlaybackState('stopped');
+      }
+    },
   });
 
-  // Generate initial riff on mount (only in non-layered mode)
+  // Generate riff when entering Quick Riff mode (or on mount if already in it)
   useEffect(() => {
-    if (!currentRiff && !isLayeredMode) {
+    if (!isLayeredMode) {
       generateNewRiff();
     }
-  }, []);
+  }, [isLayeredMode]);
 
   // Auto-regenerate on parameter changes (with debounce) - only in non-layered mode
   useEffect(() => {
@@ -84,7 +103,7 @@ export default function HomeScreen() {
       clearTimeout(timeoutId);
       isAutoRegeneratingRef.current = false;
     };
-  }, [mood, style, tempo, bassMovement, bluesyFeel, complexity, energy, difficulty, isLayeredMode]);
+  }, [mood, style, tempo, bassMovement, bluesyFeel, complexity, energy, numBars, difficulty, isLayeredMode]);
 
   const handlePlay = useCallback(() => {
     if (isLayeredMode && progression) {
@@ -111,7 +130,11 @@ export default function HomeScreen() {
     }
   }, [currentRiff, audioEngine, isLayeredMode, progression, layers, getCurrentLayerEvents, getPlayableLayerEvents, tempo]);
 
+  // Keep ref in sync so onPlaybackEnd can call handlePlay
+  handlePlayRef.current = handlePlay;
+
   const handleStop = useCallback(() => {
+    stoppingRef.current = true;
     audioEngine.stop();
   }, [audioEngine]);
 
@@ -158,6 +181,9 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Mode Selector */}
+        <ModeSelector />
+
         {/* Difficulty Selector */}
         <DifficultySelector selected={difficulty} onSelect={setDifficulty} />
 
@@ -175,7 +201,7 @@ export default function HomeScreen() {
         <KnobPanel />
 
         {/* Layer Builder (only in layered mode) */}
-        <LayerBuilder />
+        {isLayeredMode && <LayerBuilder />}
 
         {/* Tab Display */}
         <TabDisplay
@@ -197,11 +223,14 @@ export default function HomeScreen() {
       {/* Playback Controls */}
       <PlaybackControls
         isPlaying={playbackState === 'playing'}
+        isLooping={isLooping}
         onPlay={handlePlay}
         onStop={handleStop}
         onNewRiff={handleNewRiff}
         onExport={handleExport}
+        onToggleLoop={toggleLooping}
         disabled={!currentRiff && !(isLayeredMode && progression)}
+        isLayeredMode={isLayeredMode}
       />
 
       {/* Export Modal */}
@@ -251,8 +280,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
   infoBar: {
     flexDirection: 'row',

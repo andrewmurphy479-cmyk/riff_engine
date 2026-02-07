@@ -4,20 +4,26 @@ import { colors, spacing, borderRadius } from '../theme/colors';
 
 interface PlaybackControlsProps {
   isPlaying: boolean;
+  isLooping: boolean;
   onPlay: () => void;
   onStop: () => void;
   onNewRiff: () => void;
   onExport: () => void;
+  onToggleLoop: () => void;
   disabled?: boolean;
+  isLayeredMode?: boolean;
 }
 
 export function PlaybackControls({
   isPlaying,
+  isLooping,
   onPlay,
   onStop,
   onNewRiff,
   onExport,
+  onToggleLoop,
   disabled = false,
+  isLayeredMode = false,
 }: PlaybackControlsProps) {
   return (
     <View style={styles.container}>
@@ -31,6 +37,15 @@ export function PlaybackControls({
         >
           <Text style={styles.playIcon}>{isPlaying ? '■' : '▶'}</Text>
           <Text style={styles.playText}>{isPlaying ? 'Stop' : 'Play'}</Text>
+        </TouchableOpacity>
+
+        {/* Loop Toggle */}
+        <TouchableOpacity
+          style={[styles.loopButton, isLooping && styles.loopButtonActive]}
+          onPress={onToggleLoop}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.loopIcon, isLooping && styles.loopIconActive]}>↻</Text>
         </TouchableOpacity>
 
         {/* Export Button */}
@@ -92,6 +107,28 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 17,
     fontWeight: '800',
+  },
+  loopButton: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  loopButtonActive: {
+    backgroundColor: colors.chipActive,
+    borderColor: colors.chipActiveBorder,
+  },
+  loopIcon: {
+    color: colors.textSecondary,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  loopIconActive: {
+    color: colors.accent,
   },
   exportButton: {
     flex: 1,
