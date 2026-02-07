@@ -1,4 +1,4 @@
-import { TabEvent, GeneratorConfig, GeneratedRiff, Mood, Style, Difficulty } from './types';
+import { TabEvent, GeneratorConfig, GeneratedRiff, Mood, Style } from './types';
 import { generateProgression } from './progressions';
 import { STYLE_FUNCTIONS, applyBassWalk, applyFill, applyOrnaments, resetVoiceLeading, initializeMotif, assignVelocityToEvents, BarConfig } from './styles';
 import { GuitarString } from './types';
@@ -28,6 +28,11 @@ function buildBarConfig(config: GeneratorConfig, barPosition: number = 0, totalB
   // Density based on energy and complexity
   const density = Math.max(0.55, Math.min(1.45, 0.75 + 0.1 * config.energy));
 
+  // Get difficulty constraints (default to advanced = no restrictions)
+  const diffConfig = config.difficulty
+    ? getDifficultyConfig(config.difficulty)
+    : null;
+
   return {
     density,
     complexity: config.complexity,
@@ -38,6 +43,11 @@ function buildBarConfig(config: GeneratorConfig, barPosition: number = 0, totalB
     barPosition,
     totalBars,
     mood: config.mood,
+    maxFret: diffConfig?.maxFret ?? 12,
+    allowSyncopation: diffConfig?.allowSyncopation ?? true,
+    allowBassWalks: diffConfig?.allowBassWalks ?? true,
+    fillProbMult: diffConfig?.fillProbMult ?? 1.0,
+    ornamentProbMult: diffConfig?.ornamentProbMult ?? 1.0,
   };
 }
 
@@ -95,8 +105,10 @@ function generateEventsForProgression(
     }
   }
 
-  // Apply swing feel based on mood
-  const swungEvents = applySwing(outEvents, config.mood, config.bluesyFeel);
+  // Apply swing feel based on mood (respect difficulty allowSwing)
+  const diffConfig = config.difficulty ? getDifficultyConfig(config.difficulty) : null;
+  const allowSwing = diffConfig?.allowSwing ?? true;
+  const swungEvents = applySwing(outEvents, config.mood, config.bluesyFeel, allowSwing);
 
   return swungEvents;
 }
@@ -121,7 +133,8 @@ const SWING_MOODS: Partial<Record<Mood, number>> = {
 
 // Apply swing/shuffle feel to events
 // Swing shifts the "and" beats (positions 2, 6, 10, 14 in each bar) later
-function applySwing(events: TabEvent[], mood: Mood, bluesyFeel: number): TabEvent[] {
+function applySwing(events: TabEvent[], mood: Mood, bluesyFeel: number, allowSwing: boolean = true): TabEvent[] {
+  if (!allowSwing) return events; // Difficulty disables swing
   const swingAmount = SWING_MOODS[mood] || 0;
 
   // Bluesy feel increases swing
@@ -154,10 +167,11 @@ function applySwing(events: TabEvent[], mood: Mood, bluesyFeel: number): TabEven
 }
 
 // Main generator function
-export function generateRiff(config: GeneratorConfig, difficulty?: Difficulty): GeneratedRiff {
+export function generateRiff(config: GeneratorConfig): GeneratedRiff {
   // Apply difficulty constraints if specified
   let effectiveConfig = { ...config };
   let allowedChords: string[] | undefined;
+  const difficulty = config.difficulty;
 
   if (difficulty) {
     effectiveConfig.tempo = clampTempoForDifficulty(config.tempo, difficulty);
@@ -173,7 +187,7 @@ export function generateRiff(config: GeneratorConfig, difficulty?: Difficulty): 
   // Generate progression
   const progression = generateProgression(
     effectiveConfig.mood,
-    4, // 4 bars
+    effectiveConfig.numBars ?? 4,
     effectiveConfig.bluesyFeel,
     effectiveConfig.energy,
     allowedChords

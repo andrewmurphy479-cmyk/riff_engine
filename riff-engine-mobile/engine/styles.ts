@@ -57,6 +57,11 @@ export interface BarConfig {
   barPosition: number;  // 0-3 for which bar we're in
   totalBars: number;    // Total bars in the phrase
   mood: Mood;           // Current mood for rhythmic variation
+  maxFret: number;              // Difficulty-based fret limit
+  allowSyncopation: boolean;    // Whether off-beat rhythms are allowed
+  allowBassWalks: boolean;      // Whether bass walks between chords are allowed
+  fillProbMult: number;         // 0-1, multiplier for fill probability
+  ornamentProbMult: number;     // 0-1, multiplier for ornament probability
 }
 
 // Mood-specific rhythmic patterns
@@ -218,9 +223,10 @@ export function getActiveMotif(): Motif | null {
 // This proactively INSERTS ornament notes rather than just marking existing ones
 export function applyOrnaments(events: TabEvent[], config: BarConfig): void {
   if (config.complexity < 3) return; // No ornaments for simpler playing
+  if (config.ornamentProbMult <= 0) return; // Difficulty disables ornaments
 
-  // Higher complexity = more ornaments
-  const ornamentProb = 0.25 + (config.complexity - 3) * 0.15; // 25-55% chance per eligible note
+  // Higher complexity = more ornaments, scaled by difficulty multiplier
+  const ornamentProb = (0.25 + (config.complexity - 3) * 0.15) * config.ornamentProbMult; // 25-55% base, scaled
   const maxOrnaments = config.complexity - 1; // 2-4 ornaments per bar max
 
   // Find treble notes that could receive ornaments
@@ -335,7 +341,7 @@ export function barTravis(chord: string, config: BarConfig): TabEvent[] {
 
   const bass = getChordBass(chord);
   const altBass = getChordAltBass(chord);
-  const treble = getChordTrebleForComplexity(chord, config.complexity);
+  const treble = getChordTrebleForComplexity(chord, config.complexity, config.maxFret);
 
   // Get phrase configuration for musical structure
   const phraseConfig = getPhraseConfig(config.barPosition, config.totalBars, config.mood);
@@ -370,11 +376,17 @@ export function barTravis(chord: string, config: BarConfig): TabEvent[] {
   // Place melody notes at musically appropriate positions
   // Travis picking typically has melody on beats 2 and 4 (steps 4 and 12)
   // With pickups on the "and" of beats
-  const melodyPositions = config.complexity <= 2
-    ? [4, 12]  // Simple: just beats 2 and 4
-    : config.complexity <= 3
-      ? [4, 10, 12]  // Medium: add a pickup
-      : [4, 6, 10, 12, 14];  // Complex: more movement
+  let melodyPositions: number[];
+  if (!config.allowSyncopation) {
+    // Beginner: on-beat only
+    melodyPositions = [4, 12];
+  } else if (config.complexity <= 2) {
+    melodyPositions = [4, 12];
+  } else if (config.complexity <= 3) {
+    melodyPositions = [4, 10, 12];  // Medium: add a pickup
+  } else {
+    melodyPositions = [4, 6, 10, 12, 14];  // Complex: more movement
+  }
 
   // Check for motif notes — use them instead of melodic line when available
   const motifNotes = getMotifNotesForBar(chord, config);
@@ -435,7 +447,7 @@ export function barArpeggio(chord: string, config: BarConfig): TabEvent[] {
 
   const bass = getChordBass(chord);
   const altBass = getChordAltBass(chord);
-  const treble = getChordTrebleForComplexity(chord, config.complexity);
+  const treble = getChordTrebleForComplexity(chord, config.complexity, config.maxFret);
   const randomness = 0.2 + (config.complexity - 1) * 0.1;
 
   // Get mood-specific rhythm
@@ -450,9 +462,12 @@ export function barArpeggio(chord: string, config: BarConfig): TabEvent[] {
   // Sort treble by pitch for directed arpeggios
   const sortedTreble = [...treble].sort((a, b) => getAbsolutePitch(a) - getAbsolutePitch(b));
 
-  // Determine step pattern based on mood
+  // Determine step pattern based on mood and syncopation allowance
   let steps: number[];
-  if (moodRhythm.restProb > 0.3) {
+  if (!config.allowSyncopation) {
+    // No syncopation: quarter notes only
+    steps = [0, 4, 8, 12];
+  } else if (moodRhythm.restProb > 0.3) {
     // Sparse moods: fewer notes
     steps = [0, 4, 8, 12];
   } else if (moodRhythm.syncopationProb > 0.5) {
@@ -529,7 +544,7 @@ export function barCrosspick(chord: string, config: BarConfig): TabEvent[] {
   const events: TabEvent[] = [];
   const used: UsedSlots = new Set();
 
-  const treble = getChordTrebleForComplexity(chord, config.complexity);
+  const treble = getChordTrebleForComplexity(chord, config.complexity, config.maxFret);
   const bass = getChordBass(chord);
   const randomness = 0.15; // Tighter voice leading for crosspicking
 
@@ -556,8 +571,8 @@ export function barCrosspick(chord: string, config: BarConfig): TabEvent[] {
   // Roll pattern: low-mid-high-mid (classic crosspick)
   const order = [0, 1, 2, 1];
 
-  // Complexity controls 16ths vs 8ths
-  const use16ths = config.complexity >= 3;
+  // Complexity controls 16ths vs 8ths; no syncopation forces 8th-note pattern
+  const use16ths = config.complexity >= 3 && config.allowSyncopation;
   const steps = use16ths
     ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     : [0, 2, 4, 6, 8, 10, 12, 14];
@@ -605,7 +620,7 @@ export function barStrum(chord: string, config: BarConfig): TabEvent[] {
 
   const bass = getChordBass(chord);
   const altBass = getChordAltBass(chord);
-  const treble = getChordTrebleForComplexity(chord, config.complexity);
+  const treble = getChordTrebleForComplexity(chord, config.complexity, config.maxFret);
 
   // Get mood-specific rhythm
   const moodRhythm = getMoodRhythm(config.mood);
@@ -613,8 +628,10 @@ export function barStrum(chord: string, config: BarConfig): TabEvent[] {
   // Strum patterns based on energy AND mood
   let hits: number[];
 
-  // Start with energy-based pattern
-  if (config.energy <= 2) {
+  if (!config.allowSyncopation) {
+    // No syncopation: quarter notes only, capped
+    hits = [0, 4, 8, 12];
+  } else if (config.energy <= 2) {
     hits = [0, 8]; // Half notes
   } else if (config.energy <= 3) {
     hits = [0, 4, 8, 12]; // Quarter notes
@@ -624,8 +641,8 @@ export function barStrum(chord: string, config: BarConfig): TabEvent[] {
     hits = [0, 4, 8, 12]; // Default quarter notes
   }
 
-  // Apply mood syncopation
-  if (Math.random() < moodRhythm.syncopationProb) {
+  // Apply mood syncopation (only if syncopation is allowed)
+  if (config.allowSyncopation && Math.random() < moodRhythm.syncopationProb) {
     // Shift some hits for syncopation
     const syncopatedMoods: Mood[] = ['gritty', 'soulful', 'mysterious', 'tense'];
     if (syncopatedMoods.includes(config.mood)) {
@@ -693,6 +710,7 @@ export function applyBassWalk(
   chord: string,
   config: BarConfig
 ): void {
+  if (!config.allowBassWalks) return; // Difficulty disables bass walks
   if (config.bassMovement <= 1) return;
 
   const walk = getBassWalk(prevChord, chord);
@@ -721,7 +739,8 @@ export function applyFill(
   config: BarConfig,
   nextChord?: string
 ): void {
-  const baseFillProb = 0.25 * config.density * (0.6 + 0.12 * config.complexity);
+  if (config.fillProbMult <= 0) return; // Difficulty disables fills
+  const baseFillProb = 0.25 * config.density * (0.6 + 0.12 * config.complexity) * config.fillProbMult;
   if (Math.random() > baseFillProb) return;
 
   const treble = getChordTreble(chord);

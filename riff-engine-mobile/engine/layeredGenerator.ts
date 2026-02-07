@@ -2,6 +2,7 @@ import { TabEvent, GeneratorConfig, RiffLayer, LayerState, LayeredRiff, Mood } f
 import { generateProgression } from './progressions';
 import { getChordBass, getChordAltBass, getChordTrebleForComplexity } from './chords';
 import { getMoodRhythm } from './styles';
+import { getDifficultyConfig, getAllowedChordsForDifficulty } from './difficulty';
 import {
   initializePhrase,
   getPhraseConfig,
@@ -73,11 +74,16 @@ function assignLayerVelocity(events: TabEvent[], layer: RiffLayer, mood: Mood): 
 
 // Generate just the chord progression
 export function generateProgressionForRiff(config: GeneratorConfig): string[] {
+  const allowedChords = config.difficulty
+    ? getAllowedChordsForDifficulty(config.difficulty)
+    : undefined;
+
   return generateProgression(
     config.mood,
-    4, // 4 bars
+    config.numBars ?? 4,
     config.bluesyFeel,
-    config.energy
+    config.energy,
+    allowedChords
   );
 }
 
@@ -92,11 +98,16 @@ export function generateMelodyLayer(
   initializePhrase(config.mood);
   const motif = generateMotif(config.complexity);
 
+  // Get maxFret from difficulty config
+  const maxFret = config.difficulty
+    ? getDifficultyConfig(config.difficulty).maxFret
+    : 12;
+
   let lastNote: { string: any; fret: number } | null = null;
 
   for (let barIndex = 0; barIndex < progression.length; barIndex++) {
     const chord = progression[barIndex];
-    const treble = getChordTrebleForComplexity(chord, config.complexity);
+    const treble = getChordTrebleForComplexity(chord, config.complexity, maxFret);
 
     // Get phrase config for musical structure
     const phraseConfig = getPhraseConfig(barIndex, progression.length, config.mood);
@@ -255,9 +266,14 @@ export function generateFillsLayer(
     usedPositions.add(`${e.string}:${e.step}`);
   }
 
+  // Get maxFret from difficulty config
+  const maxFret = config.difficulty
+    ? getDifficultyConfig(config.difficulty).maxFret
+    : 12;
+
   for (let barIndex = 0; barIndex < progression.length; barIndex++) {
     const chord = progression[barIndex];
-    const treble = getChordTrebleForComplexity(chord, config.complexity);
+    const treble = getChordTrebleForComplexity(chord, config.complexity, maxFret);
     const offset = barIndex * 16;
 
     // Find melody notes in this bar for reference

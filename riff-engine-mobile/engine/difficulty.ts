@@ -7,6 +7,12 @@ export interface DifficultyConfig {
   maxComplexity: number;
   allowedStyles: Style[];
   allowedChords: string[];
+  maxFret: number;
+  allowSyncopation: boolean;
+  allowBassWalks: boolean;
+  allowSwing: boolean;
+  fillProbMult: number;      // 0.0-1.0, multiplier for fill probability
+  ornamentProbMult: number;  // 0.0-1.0, multiplier for ornament probability
 }
 
 export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
@@ -17,6 +23,12 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     maxComplexity: 2,
     allowedStyles: ['travis', 'strum'],
     allowedChords: ['Am', 'C', 'G', 'D', 'Em'],
+    maxFret: 3,
+    allowSyncopation: false,
+    allowBassWalks: false,
+    allowSwing: false,
+    fillProbMult: 0,
+    ornamentProbMult: 0,
   },
   intermediate: {
     id: 'intermediate',
@@ -25,6 +37,12 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     maxComplexity: 4,
     allowedStyles: ['travis', 'strum', 'arpeggio'],
     allowedChords: ['Am', 'C', 'G', 'D', 'Em', 'A', 'E', 'Dm', 'F'],
+    maxFret: 5,
+    allowSyncopation: true,
+    allowBassWalks: true,
+    allowSwing: true,
+    fillProbMult: 0.5,
+    ornamentProbMult: 0.6,
   },
   advanced: {
     id: 'advanced',
@@ -33,6 +51,12 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     maxComplexity: 5,
     allowedStyles: ['travis', 'strum', 'arpeggio', 'crosspicking'],
     allowedChords: ['Am', 'C', 'G', 'D', 'Em', 'A', 'E', 'Dm', 'F', 'B7'],
+    maxFret: 12,
+    allowSyncopation: true,
+    allowBassWalks: true,
+    allowSwing: true,
+    fillProbMult: 1.0,
+    ornamentProbMult: 1.0,
   },
 };
 

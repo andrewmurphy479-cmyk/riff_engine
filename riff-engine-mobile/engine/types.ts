@@ -64,6 +64,8 @@ export interface GeneratorConfig {
   bluesyFeel: number;     // 1-5, "Bluesy Feel" slider
   complexity: number;     // 1-5, "Complexity" slider
   energy: number;         // 1-5, "Energy" slider
+  numBars: number;        // 2, 4, 6, or 8
+  difficulty?: Difficulty; // Optional for backward compat
 }
 
 // Preset configuration

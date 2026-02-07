@@ -28,6 +28,7 @@ interface RiffState {
   bluesyFeel: number;
   complexity: number;
   energy: number;
+  numBars: number;
 
   // Generated riff (legacy full generation)
   currentRiff: GeneratedRiff | null;
@@ -53,6 +54,7 @@ interface RiffState {
   setBluesyFeel: (value: number) => void;
   setComplexity: (value: number) => void;
   setEnergy: (value: number) => void;
+  setNumBars: (value: number) => void;
   setPlaybackState: (state: PlaybackState) => void;
   setCustomizeExpanded: (expanded: boolean) => void;
   toggleCustomizeExpanded: () => void;
@@ -85,6 +87,7 @@ export const useRiffStore = create<RiffState>((set, get) => ({
   bluesyFeel: 3,
   complexity: 3,
   energy: 3,
+  numBars: 4,
 
   // Initial state
   currentRiff: null,
@@ -136,6 +139,8 @@ export const useRiffStore = create<RiffState>((set, get) => ({
 
   setEnergy: (energy) => set({ energy, selectedPresetId: null }),
 
+  setNumBars: (numBars) => set({ numBars, selectedPresetId: null }),
+
   setPlaybackState: (playbackState) => set({ playbackState }),
 
   setCustomizeExpanded: (isCustomizeExpanded) => set({ isCustomizeExpanded }),
@@ -153,6 +158,8 @@ export const useRiffStore = create<RiffState>((set, get) => ({
       bluesyFeel: state.bluesyFeel,
       complexity: state.complexity,
       energy: state.energy,
+      numBars: state.numBars,
+      difficulty: state.difficulty,
     };
 
     const riff = generateRiff(config);
@@ -186,6 +193,8 @@ export const useRiffStore = create<RiffState>((set, get) => ({
       bluesyFeel: state.bluesyFeel,
       complexity: state.complexity,
       energy: state.energy,
+      numBars: state.numBars,
+      difficulty: state.difficulty,
     };
   },
 

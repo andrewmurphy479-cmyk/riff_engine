@@ -270,21 +270,27 @@ export function getChordExtendedTreble(chord: string): NotePosition[] {
 
 // Get treble notes with complexity-based selection
 // Higher complexity = more notes to choose from (including higher positions)
-export function getChordTrebleForComplexity(chord: string, complexity: number): NotePosition[] {
+// maxFret limits which notes are returned (default 12 = no effective limit)
+export function getChordTrebleForComplexity(chord: string, complexity: number, maxFret: number = 12): NotePosition[] {
   const basic = CHORD_TREBLE_NOTES[chord] || CHORD_TREBLE_NOTES['Em'];
   const extended = CHORD_EXTENDED_NOTES[chord];
 
+  let notes: NotePosition[];
   if (!extended || complexity <= 2) {
-    return basic;
+    notes = basic;
+  } else {
+    // Complexity 3: basic + 1 extended note
+    // Complexity 4: basic + 2 extended notes
+    // Complexity 5: all extended notes
+    const extraNotes = complexity - 2;
+    const extendedToAdd = extended.slice(3, 3 + extraNotes);
+    notes = [...basic, ...extendedToAdd];
   }
 
-  // Complexity 3: basic + 1 extended note
-  // Complexity 4: basic + 2 extended notes
-  // Complexity 5: all extended notes
-  const extraNotes = complexity - 2;
-  const extendedToAdd = extended.slice(3, 3 + extraNotes);
-
-  return [...basic, ...extendedToAdd];
+  // Filter by maxFret
+  const filtered = notes.filter(n => n.fret <= maxFret);
+  // Always return at least the basic open-position notes that fit
+  return filtered.length > 0 ? filtered : basic.filter(n => n.fret <= maxFret).length > 0 ? basic.filter(n => n.fret <= maxFret) : [basic[0]];
 }
 
 // Helper to get bass note for a chord (root)
