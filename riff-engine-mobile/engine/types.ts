@@ -17,6 +17,7 @@ export interface TabEvent {
   step: number;
   duration: number;
   technique?: Technique;  // Optional ornament marker
+  layer?: RiffLayer;      // Which layer this event belongs to
 }
 
 // Chord definition
@@ -98,6 +99,9 @@ export interface LayerState {
   fills: TabEvent[] | null;
   currentLayer: RiffLayer;
   isLayerApproved: Record<RiffLayer, boolean>;
+  layerComplexity: Record<RiffLayer, number>; // Per-layer complexity (1-5)
+  layerMuted: Record<RiffLayer, boolean>; // For solo/mute in playback
+  layerLocked: Record<RiffLayer, boolean>; // Lock layer to preserve during regeneration
 }
 
 // Layered riff - tracks each layer separately

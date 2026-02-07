@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
 import { Card } from './ui/Card';
-import { TabEvent, GuitarString, Technique } from '../engine/types';
+import { TabEvent, GuitarString, Technique, RiffLayer } from '../engine/types';
 import { TAB_STRING_ORDER } from '../engine/chords';
 import { colors, spacing, typography } from '../theme/colors';
 
@@ -19,18 +19,32 @@ const TECHNIQUE_SYMBOLS: Record<string, string> = {
   bend: 'b',
 };
 
-// Grid cell with fret and optional technique
+// Layer colors for visual distinction
+const LAYER_COLORS: Record<RiffLayer, string> = {
+  melody: '#4ECDC4',  // Teal for melody
+  bass: '#FFE66D',    // Yellow for bass
+  fills: '#FF6B6B',   // Coral for fills
+};
+
+// Grid cell with fret, technique, and layer info
 interface GridCell {
   fret: number;
   technique?: Technique;
+  layer?: RiffLayer;
 }
 
-// Render tab from events
-function renderTab(
+// Rendered character with color info
+interface ColoredChar {
+  char: string;
+  layer?: RiffLayer;
+}
+
+// Render tab from events - returns colored character data
+function renderTabColored(
   events: TabEvent[],
   progression: string[],
   stepsPerBar = 16
-): { chordLine: string; tabLines: string[] } {
+): { chordLine: string; tabLines: ColoredChar[][] } {
   const totalSteps = progression.length * stepsPerBar;
   const strings: GuitarString[] = TAB_STRING_ORDER;
 
@@ -46,57 +60,75 @@ function renderTab(
       tab[event.string][event.step] = {
         fret: event.fret,
         technique: event.technique,
+        layer: event.layer,
       };
     }
   }
 
-  // Build chord label line - one label per bar
-  // Format: "  |Dm              |G               |Dm              |A               |"
-  let chordLine = '  '; // 2 char padding for string label column
+  // Build chord label line
+  let chordLine = '  ';
   for (let bar = 0; bar < progression.length; bar++) {
     const chord = progression[bar] || '';
-    // Each bar is 16 steps (matching tab lines), chord at start
     chordLine += '|' + chord.padEnd(stepsPerBar, ' ');
   }
   chordLine += '|';
 
-  // Build tab lines
-  // Format: "e |-0---2---3------|----------------|..."
-  const tabLines: string[] = [];
+  // Build tab lines with layer info
+  const tabLines: ColoredChar[][] = [];
   for (const s of strings) {
-    let line = s + ' '; // String label + space
+    const lineChars: ColoredChar[] = [];
+
+    // String label
+    lineChars.push({ char: s });
+    lineChars.push({ char: ' ' });
+
     for (let bar = 0; bar < progression.length; bar++) {
-      line += '|';
+      lineChars.push({ char: '|' });
       for (let step = 0; step < stepsPerBar; step++) {
         const globalStep = bar * stepsPerBar + step;
         const cell = tab[s][globalStep];
         if (cell !== null) {
-          line += formatFret(cell.fret, cell.technique);
+          lineChars.push({
+            char: formatFret(cell.fret, cell.technique),
+            layer: cell.layer,
+          });
         } else {
-          line += '-';
+          lineChars.push({ char: '-' });
         }
       }
     }
-    line += '|';
-    tabLines.push(line);
+    lineChars.push({ char: '|' });
+    tabLines.push(lineChars);
   }
 
   return { chordLine, tabLines };
 }
 
 // Format fret number (always 1 char) with optional technique indicator
-// For techniques: show technique symbol (h/p/s/b) - fret inferred from context
-// For regular notes: show fret number (0-9) or letter for 10+ (a=10, b=11, etc)
 function formatFret(fret: number, technique?: Technique): string {
-  // If there's a technique, show just the symbol (keeps alignment at 1 char)
   if (technique) {
     return TECHNIQUE_SYMBOLS[technique] || String(fret);
   }
-  // For frets 10+, use letters: a=10, b=11, c=12, etc.
   if (fret > 9) {
-    return String.fromCharCode(87 + fret); // 87 + 10 = 'a'
+    return String.fromCharCode(87 + fret);
   }
   return String(fret);
+}
+
+// Render a line of colored characters
+function ColoredLine({ chars }: { chars: ColoredChar[] }) {
+  return (
+    <Text style={styles.tabLine}>
+      {chars.map((c, i) => (
+        <Text
+          key={i}
+          style={c.layer ? { color: LAYER_COLORS[c.layer] } : undefined}
+        >
+          {c.char}
+        </Text>
+      ))}
+    </Text>
+  );
 }
 
 export function TabDisplay({
@@ -109,27 +141,46 @@ export function TabDisplay({
       <Card style={styles.container}>
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>
-            Tap "New Riff" to generate a guitar tab
+            Tap "Start Building" to create a guitar riff
           </Text>
         </View>
       </Card>
     );
   }
 
-  const { chordLine, tabLines } = renderTab(events, progression, stepsPerBar);
+  const { chordLine, tabLines } = renderTabColored(events, progression, stepsPerBar);
+
+  // Check if we have any layer info (for showing legend)
+  const hasLayers = events.some(e => e.layer);
 
   return (
     <Card style={styles.container} noPadding>
       <ScrollView horizontal showsHorizontalScrollIndicator={true}>
         <View style={styles.tabContainer}>
           <Text style={styles.chordLine}>{chordLine}</Text>
-          {tabLines.map((line, index) => (
-            <Text key={index} style={styles.tabLine}>
-              {line}
-            </Text>
+          {tabLines.map((lineChars, index) => (
+            <ColoredLine key={index} chars={lineChars} />
           ))}
         </View>
       </ScrollView>
+
+      {/* Layer legend */}
+      {hasLayers && (
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: LAYER_COLORS.melody }]} />
+            <Text style={styles.legendText}>Melody</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: LAYER_COLORS.bass }]} />
+            <Text style={styles.legendText}>Bass</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: LAYER_COLORS.fills }]} />
+            <Text style={styles.legendText}>Fills</Text>
+          </View>
+        </View>
+      )}
     </Card>
   );
 }
@@ -174,5 +225,28 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.body.fontSize,
     textAlign: 'center',
+  },
+  legend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.md,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
 });

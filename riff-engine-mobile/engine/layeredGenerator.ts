@@ -68,6 +68,7 @@ export function generateMelodyLayer(
         fret: useNote.fret,
         step,
         duration: 2,
+        layer: 'melody',
       });
 
       lastNote = useNote;
@@ -98,6 +99,7 @@ export function generateBassLayer(
       fret: bass.fret,
       step: offset + 0,
       duration: 2,
+      layer: 'bass',
     });
 
     // 5th on beat 3 (step 8)
@@ -106,6 +108,7 @@ export function generateBassLayer(
       fret: altBass.fret,
       step: offset + 8,
       duration: 2,
+      layer: 'bass',
     });
 
     // Optional: add more bass movement for higher complexity
@@ -117,6 +120,7 @@ export function generateBassLayer(
           fret: bass.fret,
           step: offset + 4,
           duration: 1,
+          layer: 'bass',
         });
       }
     }
@@ -188,6 +192,7 @@ export function generateFillsLayer(
             fret: fillNote.fret,
             step,
             duration: 1,
+            layer: 'fills',
           });
 
           usedPositions.add(key(fillNote.string));
@@ -209,6 +214,7 @@ export function generateFillsLayer(
               fret: melodyNote.fret - 2,
               step: graceStep,
               duration: 1,
+              layer: 'fills',
             });
 
             // Mark the melody note as having a technique
@@ -236,13 +242,28 @@ export function combineLayers(layers: LayerState): TabEvent[] {
 }
 
 // Create initial layer state
-export function createInitialLayerState(): LayerState {
+export function createInitialLayerState(baseComplexity: number = 3): LayerState {
   return {
     melody: null,
     bass: null,
     fills: null,
     currentLayer: 'melody',
     isLayerApproved: {
+      melody: false,
+      bass: false,
+      fills: false,
+    },
+    layerComplexity: {
+      melody: baseComplexity,
+      bass: baseComplexity,
+      fills: baseComplexity,
+    },
+    layerMuted: {
+      melody: false,
+      bass: false,
+      fills: false,
+    },
+    layerLocked: {
       melody: false,
       bass: false,
       fills: false,

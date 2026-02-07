@@ -39,6 +39,7 @@ export default function HomeScreen() {
     playbackState,
     isLayeredMode,
     progression,
+    layers,
     setMood,
     setStyle,
     setDifficulty,
@@ -46,6 +47,7 @@ export default function HomeScreen() {
     generateNewRiff,
     getCurrentLayerEvents,
     getAllLayerEvents,
+    getPlayableLayerEvents,
   } = useRiffStore();
 
   // Use the new audio engine
@@ -86,15 +88,28 @@ export default function HomeScreen() {
 
   const handlePlay = useCallback(() => {
     if (isLayeredMode && progression) {
-      // In layered mode, play current layer events
-      const events = getCurrentLayerEvents();
-      if (events.length > 0) {
-        audioEngine.play(events, tempo);
+      // Check if all layers are complete
+      const allComplete = layers.isLayerApproved.melody &&
+                          layers.isLayerApproved.bass &&
+                          layers.isLayerApproved.fills;
+
+      if (allComplete) {
+        // Play with mute states respected
+        const events = getPlayableLayerEvents();
+        if (events.length > 0) {
+          audioEngine.play(events, tempo);
+        }
+      } else {
+        // Play current layer with approved layers for preview
+        const events = getCurrentLayerEvents();
+        if (events.length > 0) {
+          audioEngine.play(events, tempo);
+        }
       }
     } else if (currentRiff) {
       audioEngine.play(currentRiff.events, currentRiff.tempo);
     }
-  }, [currentRiff, audioEngine, isLayeredMode, progression, getCurrentLayerEvents, tempo]);
+  }, [currentRiff, audioEngine, isLayeredMode, progression, layers, getCurrentLayerEvents, getPlayableLayerEvents, tempo]);
 
   const handleStop = useCallback(() => {
     audioEngine.stop();

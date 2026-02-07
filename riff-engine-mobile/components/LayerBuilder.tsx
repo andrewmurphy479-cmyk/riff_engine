@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRiffStore } from '../store/useRiffStore';
 import { colors, spacing, typography } from '../theme/colors';
 import { RiffLayer } from '../engine/types';
+import { Slider } from './ui/Slider';
 
 const LAYER_INFO: Record<RiffLayer, { label: string; description: string; icon: string }> = {
   melody: {
@@ -32,6 +33,10 @@ export function LayerBuilder() {
     startLayeredGeneration,
     regenerateCurrentLayer,
     approveCurrentLayer,
+    goBackToLayer,
+    setLayerComplexity,
+    toggleLayerMute,
+    toggleLayerLock,
   } = useRiffStore();
 
   if (!isLayeredMode) return null;
@@ -71,6 +76,8 @@ export function LayerBuilder() {
 
   // All complete
   if (allComplete) {
+    const anyLocked = layers.layerLocked.melody || layers.layerLocked.bass || layers.layerLocked.fills;
+
     return (
       <View style={styles.container}>
         <View style={styles.completeHeader}>
@@ -78,20 +85,78 @@ export function LayerBuilder() {
           <Text style={styles.completeText}>Riff Complete!</Text>
         </View>
 
-        <View style={styles.layerStatus}>
-          {LAYER_ORDER.map((layer) => (
-            <View key={layer} style={styles.statusItem}>
-              <Text style={styles.statusCheck}>✓</Text>
-              <Text style={styles.statusLabel}>{LAYER_INFO[layer].label}</Text>
-            </View>
-          ))}
+        {/* Layer mute toggles */}
+        <Text style={styles.sectionLabel}>Layer Mixer</Text>
+        <View style={styles.layerMixer}>
+          {LAYER_ORDER.map((layer) => {
+            const isMuted = layers.layerMuted[layer];
+            return (
+              <TouchableOpacity
+                key={layer}
+                style={[
+                  styles.mixerButton,
+                  isMuted && styles.mixerButtonMuted,
+                ]}
+                onPress={() => toggleLayerMute(layer)}
+              >
+                <Text style={styles.mixerIcon}>{LAYER_INFO[layer].icon}</Text>
+                <Text
+                  style={[
+                    styles.mixerButtonLabel,
+                    isMuted && styles.mixerLabelMuted,
+                  ]}
+                >
+                  {LAYER_INFO[layer].label}
+                </Text>
+                <Text style={styles.mixerStatus}>
+                  {isMuted ? '🔇' : '🔊'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
+
+        {/* Layer lock toggles */}
+        <Text style={styles.sectionLabel}>Lock & Vary</Text>
+        <View style={styles.layerMixer}>
+          {LAYER_ORDER.map((layer) => {
+            const isLocked = layers.layerLocked[layer];
+            return (
+              <TouchableOpacity
+                key={layer}
+                style={[
+                  styles.lockButton,
+                  isLocked && styles.lockButtonActive,
+                ]}
+                onPress={() => toggleLayerLock(layer)}
+              >
+                <Text style={styles.lockIcon}>{isLocked ? '🔒' : '🔓'}</Text>
+                <Text
+                  style={[
+                    styles.lockLabel,
+                    isLocked && styles.lockLabelActive,
+                  ]}
+                >
+                  {LAYER_INFO[layer].label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.mixerHint}>
+          {anyLocked
+            ? 'Locked layers will be preserved when building new riff'
+            : 'Lock layers you love, then regenerate the rest'}
+        </Text>
 
         <TouchableOpacity
           style={styles.restartButton}
           onPress={startLayeredGeneration}
         >
-          <Text style={styles.restartButtonText}>Build New Riff</Text>
+          <Text style={styles.restartButtonText}>
+            {anyLocked ? 'Vary Unlocked Layers' : 'Build New Riff'}
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -100,14 +165,21 @@ export function LayerBuilder() {
   // Building in progress
   return (
     <View style={styles.container}>
-      {/* Progress indicator */}
+      {/* Progress indicator - tap approved layers to go back */}
       <View style={styles.progress}>
         {LAYER_ORDER.map((layer, index) => {
           const isComplete = layers.isLayerApproved[layer];
           const isCurrent = layer === currentLayer;
+          const canGoBack = isComplete && !isCurrent;
 
           return (
-            <View key={layer} style={styles.progressStep}>
+            <TouchableOpacity
+              key={layer}
+              style={styles.progressStep}
+              onPress={() => canGoBack && goBackToLayer(layer)}
+              disabled={!canGoBack}
+              activeOpacity={canGoBack ? 0.7 : 1}
+            >
               <View
                 style={[
                   styles.progressDot,
@@ -125,11 +197,13 @@ export function LayerBuilder() {
                 style={[
                   styles.progressLabel,
                   isCurrent && styles.progressLabelCurrent,
+                  canGoBack && styles.progressLabelClickable,
                 ]}
               >
                 {LAYER_INFO[layer].label}
               </Text>
-            </View>
+              {canGoBack && <Text style={styles.editHint}>tap to edit</Text>}
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -139,6 +213,18 @@ export function LayerBuilder() {
         <Text style={styles.currentIcon}>{currentInfo.icon}</Text>
         <Text style={styles.currentTitle}>{currentInfo.label}</Text>
         <Text style={styles.currentDescription}>{currentInfo.description}</Text>
+      </View>
+
+      {/* Layer complexity slider */}
+      <View style={styles.complexitySlider}>
+        <Slider
+          label={`${currentInfo.label} Complexity`}
+          value={layers.layerComplexity[currentLayer]}
+          onValueChange={(value) => setLayerComplexity(currentLayer, value)}
+          minimumValue={1}
+          maximumValue={5}
+          step={1}
+        />
       </View>
 
       {/* Action buttons */}
@@ -160,7 +246,9 @@ export function LayerBuilder() {
 
       {/* Hint */}
       <Text style={styles.hint}>
-        Listen to the {currentInfo.label.toLowerCase()}, then approve or regenerate
+        {currentLayer === 'melody'
+          ? 'Listen to the melody, then approve or regenerate'
+          : `Listen to the ${currentInfo.label.toLowerCase()} with approved layers, then approve or regenerate`}
       </Text>
     </View>
   );
@@ -254,6 +342,15 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: '600',
   },
+  progressLabelClickable: {
+    color: colors.success,
+    textDecorationLine: 'underline',
+  },
+  editHint: {
+    fontSize: 9,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
   currentLayer: {
     alignItems: 'center',
     paddingVertical: spacing.md,
@@ -276,6 +373,10 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  complexitySlider: {
+    marginVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   actions: {
     flexDirection: 'row',
@@ -340,6 +441,78 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     color: colors.textSecondary,
+  },
+  sectionLabel: {
+    fontSize: typography.caption.fontSize,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  layerMixer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  mixerButton: {
+    flex: 1,
+    backgroundColor: colors.success + '30',
+    borderRadius: 8,
+    padding: spacing.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  mixerButtonMuted: {
+    backgroundColor: colors.border,
+    borderColor: colors.border,
+    opacity: 0.6,
+  },
+  mixerIcon: {
+    fontSize: 20,
+    marginBottom: 2,
+  },
+  mixerButtonLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  mixerLabelMuted: {
+    color: colors.textMuted,
+  },
+  mixerStatus: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  lockButton: {
+    flex: 1,
+    backgroundColor: colors.border,
+    borderRadius: 8,
+    padding: spacing.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  lockButtonActive: {
+    backgroundColor: colors.accent + '30',
+    borderColor: colors.accent,
+  },
+  lockIcon: {
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  lockLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  lockLabelActive: {
+    color: colors.accent,
+  },
+  mixerHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing.md,
   },
   restartButton: {
     backgroundColor: colors.accent,

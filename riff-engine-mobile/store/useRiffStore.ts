@@ -66,8 +66,13 @@ interface RiffState {
   generateCurrentLayer: () => void;
   regenerateCurrentLayer: () => void;
   approveCurrentLayer: () => void;
+  goBackToLayer: (layer: RiffLayer) => void;
+  setLayerComplexity: (layer: RiffLayer, complexity: number) => void;
+  toggleLayerMute: (layer: RiffLayer) => void;
+  toggleLayerLock: (layer: RiffLayer) => void;
   getCurrentLayerEvents: () => TabEvent[];
   getAllLayerEvents: () => TabEvent[];
+  getPlayableLayerEvents: () => TabEvent[];
 }
 
 export const useRiffStore = create<RiffState>((set, get) => ({
@@ -190,21 +195,65 @@ export const useRiffStore = create<RiffState>((set, get) => ({
   startLayeredGeneration: () => {
     const state = get();
     const config = state.getConfig();
+    const oldLayers = state.layers;
 
-    // Generate progression first
-    const progression = generateProgressionForRiff(config);
+    // Check what's locked
+    const melodyLocked = oldLayers.layerLocked.melody && oldLayers.melody;
+    const bassLocked = oldLayers.layerLocked.bass && oldLayers.bass;
+    const fillsLocked = oldLayers.layerLocked.fills && oldLayers.fills;
 
-    // Reset layers
-    const layers = createInitialLayerState();
+    // If melody is locked, keep the old progression
+    // Otherwise generate a new one
+    const progression = melodyLocked && state.progression
+      ? state.progression
+      : generateProgressionForRiff(config);
 
-    // Generate first layer (melody)
-    layers.melody = generateMelodyLayer(progression, config);
-    layers.currentLayer = 'melody';
+    // Create new layer state, preserving complexity and lock settings
+    const layers = createInitialLayerState(state.complexity);
+    layers.layerComplexity = { ...oldLayers.layerComplexity };
+    layers.layerLocked = { ...oldLayers.layerLocked };
+
+    // Preserve locked layers
+    if (melodyLocked) {
+      layers.melody = oldLayers.melody;
+      layers.isLayerApproved.melody = true;
+    }
+    if (bassLocked) {
+      layers.bass = oldLayers.bass;
+      layers.isLayerApproved.bass = true;
+    }
+    if (fillsLocked) {
+      layers.fills = oldLayers.fills;
+      layers.isLayerApproved.fills = true;
+    }
+
+    // Find first unlocked layer to start with
+    const layerOrder: RiffLayer[] = ['melody', 'bass', 'fills'];
+    let startLayer: RiffLayer = 'melody';
+    for (const layer of layerOrder) {
+      if (!layers.isLayerApproved[layer]) {
+        startLayer = layer;
+        break;
+      }
+    }
+    layers.currentLayer = startLayer;
+
+    // Generate the first unlocked layer
+    const layerComplexity = layers.layerComplexity[startLayer];
+    const layerConfig = { ...config, complexity: layerComplexity };
+
+    if (startLayer === 'melody' && !melodyLocked) {
+      layers.melody = generateMelodyLayer(progression, layerConfig);
+    } else if (startLayer === 'bass' && !bassLocked) {
+      layers.bass = generateBassLayer(progression, layerConfig);
+    } else if (startLayer === 'fills' && !fillsLocked && layers.melody && layers.bass) {
+      layers.fills = generateFillsLayer(progression, layerConfig, layers.melody, layers.bass);
+    }
 
     set({
       progression,
       layers,
-      currentRiff: null, // Clear legacy riff
+      currentRiff: null,
     });
   },
 
@@ -212,8 +261,12 @@ export const useRiffStore = create<RiffState>((set, get) => ({
     const state = get();
     if (!state.progression) return;
 
-    const config = state.getConfig();
+    const baseConfig = state.getConfig();
     const layers = { ...state.layers };
+
+    // Use layer-specific complexity
+    const layerComplexity = layers.layerComplexity[layers.currentLayer];
+    const config = { ...baseConfig, complexity: layerComplexity };
 
     switch (layers.currentLayer) {
       case 'melody':
@@ -242,6 +295,62 @@ export const useRiffStore = create<RiffState>((set, get) => ({
     get().generateCurrentLayer();
   },
 
+  setLayerComplexity: (layer, complexity) => {
+    const state = get();
+    const layers = {
+      ...state.layers,
+      layerComplexity: {
+        ...state.layers.layerComplexity,
+        [layer]: complexity,
+      },
+    };
+    set({ layers });
+  },
+
+  toggleLayerMute: (layer) => {
+    const state = get();
+    const layers = {
+      ...state.layers,
+      layerMuted: {
+        ...state.layers.layerMuted,
+        [layer]: !state.layers.layerMuted[layer],
+      },
+    };
+    set({ layers });
+  },
+
+  toggleLayerLock: (layer) => {
+    const state = get();
+    const layers = {
+      ...state.layers,
+      layerLocked: {
+        ...state.layers.layerLocked,
+        [layer]: !state.layers.layerLocked[layer],
+      },
+    };
+    set({ layers });
+  },
+
+  goBackToLayer: (layer) => {
+    const state = get();
+    const layers = { ...state.layers };
+
+    // Set current layer
+    layers.currentLayer = layer;
+
+    // Unapprove this layer and all subsequent layers
+    // Layer order: melody -> bass -> fills
+    const layerOrder: RiffLayer[] = ['melody', 'bass', 'fills'];
+    const targetIndex = layerOrder.indexOf(layer);
+
+    for (let i = targetIndex; i < layerOrder.length; i++) {
+      layers.isLayerApproved[layerOrder[i]] = false;
+    }
+
+    // Clear the final riff since we're editing again
+    set({ layers, currentRiff: null });
+  },
+
   approveCurrentLayer: () => {
     const state = get();
     const layers = { ...state.layers };
@@ -259,8 +368,11 @@ export const useRiffStore = create<RiffState>((set, get) => ({
     if (nextLayer) {
       layers.currentLayer = nextLayer;
 
-      // Auto-generate the next layer
-      const config = state.getConfig();
+      // Auto-generate the next layer with its layer-specific complexity
+      const baseConfig = state.getConfig();
+      const layerComplexity = layers.layerComplexity[nextLayer];
+      const config = { ...baseConfig, complexity: layerComplexity };
+
       switch (nextLayer) {
         case 'bass':
           layers.bass = generateBassLayer(state.progression!, config);
@@ -300,22 +412,65 @@ export const useRiffStore = create<RiffState>((set, get) => ({
   getCurrentLayerEvents: () => {
     const state = get();
     const layers = state.layers;
+    const events: TabEvent[] = [];
 
-    // Return events for current layer only
+    // Include approved layers for context during preview
+    // This lets user hear how layers work together
+
+    // Always include approved melody
+    if (layers.isLayerApproved.melody && layers.melody) {
+      events.push(...layers.melody);
+    }
+
+    // Include approved bass
+    if (layers.isLayerApproved.bass && layers.bass) {
+      events.push(...layers.bass);
+    }
+
+    // Add current layer being previewed (if not already included as approved)
     switch (layers.currentLayer) {
       case 'melody':
-        return layers.melody || [];
+        if (!layers.isLayerApproved.melody && layers.melody) {
+          events.push(...layers.melody);
+        }
+        break;
       case 'bass':
-        return layers.bass || [];
+        if (!layers.isLayerApproved.bass && layers.bass) {
+          events.push(...layers.bass);
+        }
+        break;
       case 'fills':
-        return layers.fills || [];
-      default:
-        return [];
+        if (layers.fills) {
+          events.push(...layers.fills);
+        }
+        break;
     }
+
+    // Sort by step for proper playback
+    return events.sort((a, b) => a.step - b.step);
   },
 
   getAllLayerEvents: () => {
     const state = get();
     return combineLayers(state.layers);
+  },
+
+  // Get events respecting mute state (for playback)
+  getPlayableLayerEvents: () => {
+    const state = get();
+    const layers = state.layers;
+    const events: TabEvent[] = [];
+
+    if (!layers.layerMuted.melody && layers.melody) {
+      events.push(...layers.melody);
+    }
+    if (!layers.layerMuted.bass && layers.bass) {
+      events.push(...layers.bass);
+    }
+    if (!layers.layerMuted.fills && layers.fills) {
+      events.push(...layers.fills);
+    }
+
+    return events.sort((a, b) => a.step - b.step);
   },
 }));
