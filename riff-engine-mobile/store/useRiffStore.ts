@@ -262,32 +262,34 @@ export const useRiffStore = create<RiffState>((set, get) => ({
     if (!state.progression) return;
 
     const baseConfig = state.getConfig();
-    const layers = { ...state.layers };
+    const currentLayer = state.layers.currentLayer;
 
     // Use layer-specific complexity
-    const layerComplexity = layers.layerComplexity[layers.currentLayer];
+    const layerComplexity = state.layers.layerComplexity[currentLayer];
     const config = { ...baseConfig, complexity: layerComplexity };
 
-    switch (layers.currentLayer) {
+    let layerUpdate: Partial<LayerState> = {};
+
+    switch (currentLayer) {
       case 'melody':
-        layers.melody = generateMelodyLayer(state.progression, config);
+        layerUpdate.melody = generateMelodyLayer(state.progression, config);
         break;
       case 'bass':
-        layers.bass = generateBassLayer(state.progression, config);
+        layerUpdate.bass = generateBassLayer(state.progression, config);
         break;
       case 'fills':
-        if (layers.melody && layers.bass) {
-          layers.fills = generateFillsLayer(
+        if (state.layers.melody && state.layers.bass) {
+          layerUpdate.fills = generateFillsLayer(
             state.progression,
             config,
-            layers.melody,
-            layers.bass
+            state.layers.melody,
+            state.layers.bass
           );
         }
         break;
     }
 
-    set({ layers });
+    set({ layers: { ...state.layers, ...layerUpdate } });
   },
 
   regenerateCurrentLayer: () => {
@@ -333,19 +335,20 @@ export const useRiffStore = create<RiffState>((set, get) => ({
 
   goBackToLayer: (layer) => {
     const state = get();
-    const layers = { ...state.layers };
-
-    // Set current layer
-    layers.currentLayer = layer;
-
-    // Unapprove this layer and all subsequent layers
-    // Layer order: melody -> bass -> fills
     const layerOrder: RiffLayer[] = ['melody', 'bass', 'fills'];
     const targetIndex = layerOrder.indexOf(layer);
 
+    // Build new isLayerApproved, unapproving target and all subsequent layers
+    const newApproved = { ...state.layers.isLayerApproved };
     for (let i = targetIndex; i < layerOrder.length; i++) {
-      layers.isLayerApproved[layerOrder[i]] = false;
+      newApproved[layerOrder[i]] = false;
     }
+
+    const layers = {
+      ...state.layers,
+      currentLayer: layer,
+      isLayerApproved: newApproved,
+    };
 
     // Clear the final riff since we're editing again
     set({ layers, currentRiff: null });

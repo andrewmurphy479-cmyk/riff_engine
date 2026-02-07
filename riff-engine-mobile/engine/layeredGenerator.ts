@@ -2,7 +2,6 @@ import { TabEvent, GeneratorConfig, RiffLayer, LayerState, LayeredRiff } from '.
 import { generateProgression } from './progressions';
 import { getChordBass, getChordAltBass, getChordTrebleForComplexity } from './chords';
 import {
-  resetVoiceLeading,
   initializePhrase,
   getPhraseConfig,
   getMelodicTarget,
@@ -208,17 +207,16 @@ export function generateFillsLayer(
           const graceKey = `${melodyNote.string}:${graceStep}`;
 
           if (!usedPositions.has(graceKey) && graceStep >= offset) {
-            // Add grace note for hammer-on
+            // Add grace note for hammer-on with technique marker
             events.push({
               string: melodyNote.string,
               fret: melodyNote.fret - 2,
               step: graceStep,
               duration: 1,
               layer: 'fills',
+              technique: 'hammer',
             });
 
-            // Mark the melody note as having a technique
-            melodyNote.technique = 'hammer';
             usedPositions.add(graceKey);
           }
         }

@@ -30,6 +30,10 @@ export const colors = {
   warning: '#F59E0B',
   error: '#EF4444',
 
+  // Surface / Border
+  surface: '#1A1A24',
+  border: 'rgba(255, 255, 255, 0.12)',
+
   // Misc
   white: '#FFFFFF',
   black: '#000000',
