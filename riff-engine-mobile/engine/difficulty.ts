@@ -13,6 +13,7 @@ export interface DifficultyConfig {
   allowSwing: boolean;
   fillProbMult: number;      // 0.0-1.0, multiplier for fill probability
   ornamentProbMult: number;  // 0.0-1.0, multiplier for ornament probability
+  maxMelodyNotesPerBar: number;  // Cap on melody/treble notes per bar
 }
 
 export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
@@ -29,6 +30,7 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     allowSwing: false,
     fillProbMult: 0,
     ornamentProbMult: 0,
+    maxMelodyNotesPerBar: 2,
   },
   intermediate: {
     id: 'intermediate',
@@ -43,6 +45,7 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     allowSwing: true,
     fillProbMult: 0.5,
     ornamentProbMult: 0.6,
+    maxMelodyNotesPerBar: 4,
   },
   advanced: {
     id: 'advanced',
@@ -57,6 +60,7 @@ export const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
     allowSwing: true,
     fillProbMult: 1.0,
     ornamentProbMult: 1.0,
+    maxMelodyNotesPerBar: 8,
   },
 };
 

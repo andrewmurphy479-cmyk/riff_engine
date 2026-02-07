@@ -62,6 +62,7 @@ export interface BarConfig {
   allowBassWalks: boolean;      // Whether bass walks between chords are allowed
   fillProbMult: number;         // 0-1, multiplier for fill probability
   ornamentProbMult: number;     // 0-1, multiplier for ornament probability
+  maxMelodyNotesPerBar: number; // Difficulty-based cap on melody notes per bar
 }
 
 // Mood-specific rhythmic patterns
@@ -388,6 +389,11 @@ export function barTravis(chord: string, config: BarConfig): TabEvent[] {
     melodyPositions = [4, 6, 10, 12, 14];  // Complex: more movement
   }
 
+  // Enforce difficulty-based melody note cap
+  if (melodyPositions.length > config.maxMelodyNotesPerBar) {
+    melodyPositions = melodyPositions.slice(0, config.maxMelodyNotesPerBar);
+  }
+
   // Check for motif notes — use them instead of melodic line when available
   const motifNotes = getMotifNotesForBar(chord, config);
   const usedMotifSteps = new Set<number>();
@@ -476,6 +482,14 @@ export function barArpeggio(chord: string, config: BarConfig): TabEvent[] {
   } else {
     // Standard 8th note arpeggio
     steps = [0, 2, 4, 6, 8, 10, 12, 14];
+  }
+
+  // Enforce difficulty-based melody note cap (bass steps 0,8 don't count)
+  const bassSteps = [0, 8];
+  const melodySteps = steps.filter(s => !bassSteps.includes(s));
+  if (melodySteps.length > config.maxMelodyNotesPerBar) {
+    const kept = new Set(melodySteps.slice(0, config.maxMelodyNotesPerBar));
+    steps = steps.filter(s => bassSteps.includes(s) || kept.has(s));
   }
 
   // Check for motif notes — inject at accent positions
@@ -573,9 +587,14 @@ export function barCrosspick(chord: string, config: BarConfig): TabEvent[] {
 
   // Complexity controls 16ths vs 8ths; no syncopation forces 8th-note pattern
   const use16ths = config.complexity >= 3 && config.allowSyncopation;
-  const steps = use16ths
+  let steps = use16ths
     ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     : [0, 2, 4, 6, 8, 10, 12, 14];
+
+  // Enforce difficulty-based note cap
+  if (steps.length > config.maxMelodyNotesPerBar) {
+    steps = steps.slice(0, config.maxMelodyNotesPerBar);
+  }
 
   // Check for motif notes — inject at accent positions
   const motifNotes = getMotifNotesForBar(chord, config);

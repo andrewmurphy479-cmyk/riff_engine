@@ -1,9 +1,10 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Card } from './ui/Card';
 import { TabEvent, GuitarString, Technique, RiffLayer } from '../engine/types';
 import { TAB_STRING_ORDER } from '../engine/chords';
-import { colors, spacing, typography } from '../theme/colors';
+import { colors, spacing, borderRadius, typography } from '../theme/colors';
+import { GraphicalTab } from './GraphicalTab';
 
 interface TabDisplayProps {
   events: TabEvent[];
@@ -11,8 +12,11 @@ interface TabDisplayProps {
   stepsPerBar?: number;
 }
 
+// View mode type
+type ViewMode = 'tab' | 'pro';
+
 // Technique symbols
-const TECHNIQUE_SYMBOLS: Record<string, string> = {
+export const TECHNIQUE_SYMBOLS: Record<string, string> = {
   hammer: 'h',
   pull: 'p',
   slide: '/',
@@ -20,7 +24,7 @@ const TECHNIQUE_SYMBOLS: Record<string, string> = {
 };
 
 // Layer colors for visual distinction
-const LAYER_COLORS: Record<RiffLayer, string> = {
+export const LAYER_COLORS: Record<RiffLayer, string> = {
   melody: '#4ECDC4',  // Teal for melody
   bass: '#FFE66D',    // Yellow for bass
   fills: '#FF6B6B',   // Coral for fills
@@ -84,14 +88,25 @@ function renderTabColored(
 
     for (let bar = 0; bar < progression.length; bar++) {
       lineChars.push({ char: '|' });
+      let skip = false;
       for (let step = 0; step < stepsPerBar; step++) {
+        if (skip) {
+          skip = false;
+          continue;
+        }
         const globalStep = bar * stepsPerBar + step;
         const cell = tab[s][globalStep];
         if (cell !== null) {
-          lineChars.push({
-            char: formatFret(cell.fret, cell.technique),
-            layer: cell.layer,
-          });
+          const fretStr = formatFret(cell.fret, cell.technique);
+          if (fretStr.length > 1 && step < stepsPerBar - 1) {
+            // 2-digit fret: render both chars, consume next step's position
+            for (const ch of fretStr) {
+              lineChars.push({ char: ch, layer: cell.layer });
+            }
+            skip = true;
+          } else {
+            lineChars.push({ char: fretStr, layer: cell.layer });
+          }
         } else {
           lineChars.push({ char: '-' });
         }
@@ -104,13 +119,10 @@ function renderTabColored(
   return { chordLine, tabLines };
 }
 
-// Format fret number (always 1 char) with optional technique indicator
+// Format fret number with optional technique indicator
 function formatFret(fret: number, technique?: Technique): string {
   if (technique) {
     return TECHNIQUE_SYMBOLS[technique] || String(fret);
-  }
-  if (fret > 9) {
-    return String.fromCharCode(87 + fret);
   }
   return String(fret);
 }
@@ -136,6 +148,8 @@ export function TabDisplay({
   progression,
   stepsPerBar = 16,
 }: TabDisplayProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('tab');
+
   if (!events || events.length === 0) {
     return (
       <Card style={styles.container}>
@@ -155,14 +169,49 @@ export function TabDisplay({
 
   return (
     <Card style={styles.container} noPadding>
-      <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-        <View style={styles.tabContainer}>
-          <Text style={styles.chordLine}>{chordLine}</Text>
-          {tabLines.map((lineChars, index) => (
-            <ColoredLine key={index} chars={lineChars} />
-          ))}
+      {/* View mode switcher */}
+      <View style={styles.switcherRow}>
+        <View style={styles.switcher}>
+          <TouchableOpacity
+            style={[styles.switchSegment, viewMode === 'tab' && styles.switchSegmentActive]}
+            onPress={() => setViewMode('tab')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.switchText, viewMode === 'tab' && styles.switchTextActive]}>
+              Tab
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.switchSegment, viewMode === 'pro' && styles.switchSegmentActive]}
+            onPress={() => setViewMode('pro')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.switchText, viewMode === 'pro' && styles.switchTextActive]}>
+              Pro
+            </Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+      </View>
+
+      {/* Tab content */}
+      {viewMode === 'tab' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+          <View style={styles.tabContainer}>
+            <Text style={styles.chordLine}>{chordLine}</Text>
+            {tabLines.map((lineChars, index) => (
+              <ColoredLine key={index} chars={lineChars} />
+            ))}
+          </View>
+        </ScrollView>
+      ) : (
+        <View style={styles.proContainer}>
+          <GraphicalTab
+            events={events}
+            progression={progression}
+            stepsPerBar={stepsPerBar}
+          />
+        </View>
+      )}
 
       {/* Layer legend */}
       {hasLayers && (
@@ -197,6 +246,41 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
     minHeight: 160,
+  },
+  switcherRow: {
+    alignItems: 'flex-end',
+    paddingTop: spacing.sm,
+    paddingRight: spacing.sm,
+    paddingBottom: 0,
+  },
+  switcher: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 2,
+  },
+  switchSegment: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: borderRadius.sm - 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchSegmentActive: {
+    backgroundColor: colors.accent,
+  },
+  switchText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  switchTextActive: {
+    color: colors.white,
+  },
+  proContainer: {
+    paddingVertical: spacing.sm,
   },
   tabContainer: {
     padding: spacing.md,

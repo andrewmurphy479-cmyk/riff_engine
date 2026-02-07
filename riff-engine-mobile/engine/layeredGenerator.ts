@@ -112,8 +112,15 @@ export function generateMelodyLayer(
     // Get phrase config for musical structure
     const phraseConfig = getPhraseConfig(barIndex, progression.length, config.mood);
 
-    // Determine number of melody notes (simpler = fewer)
-    const numNotes = config.complexity <= 2 ? 2 : config.complexity <= 3 ? 3 : 4;
+    // Determine number of melody notes (simpler = fewer), capped by difficulty
+    const diffConfig = config.difficulty
+      ? getDifficultyConfig(config.difficulty)
+      : null;
+    const maxMelody = diffConfig?.maxMelodyNotesPerBar ?? 8;
+    const numNotes = Math.min(
+      config.complexity <= 2 ? 2 : config.complexity <= 3 ? 3 : 4,
+      maxMelody
+    );
 
     // Get melodic target and generate line
     const melodicTarget = getMelodicTarget(treble, phraseConfig, lastNote);
@@ -139,11 +146,16 @@ export function generateMelodyLayer(
     }
 
     // Melody positions - beats 2 and 4 are primary (steps 4 and 12)
-    const positions = numNotes <= 2
+    let positions = numNotes <= 2
       ? [4, 12]
       : numNotes <= 3
         ? [4, 8, 12]
         : [4, 6, 10, 12];
+
+    // Enforce difficulty-based melody note cap
+    if (positions.length > maxMelody) {
+      positions = positions.slice(0, maxMelody);
+    }
 
     const offset = barIndex * 16;
     const usedMotifSteps = new Set<number>();

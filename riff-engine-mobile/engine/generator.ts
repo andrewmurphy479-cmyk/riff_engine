@@ -48,6 +48,7 @@ function buildBarConfig(config: GeneratorConfig, barPosition: number = 0, totalB
     allowBassWalks: diffConfig?.allowBassWalks ?? true,
     fillProbMult: diffConfig?.fillProbMult ?? 1.0,
     ornamentProbMult: diffConfig?.ornamentProbMult ?? 1.0,
+    maxMelodyNotesPerBar: diffConfig?.maxMelodyNotesPerBar ?? 8,
   };
 }
 
