@@ -162,7 +162,7 @@ const MOOD_TEMPLATES: Record<Mood, string[][]> = {
 };
 
 // Turnarounds - optional endings that create smooth loops
-const TURNAROUNDS: Record<string, string[]> = {
+export const TURNAROUNDS: Record<string, string[]> = {
   'G': ['D', 'Em', 'D'],
   'C': ['G', 'Am', 'G'],
   'Em': ['B7', 'Am', 'B7'],
@@ -269,7 +269,18 @@ export function generateProgression(
     }
   }
 
-  return prog.slice(0, length);
+  prog = prog.slice(0, length);
+
+  // Turnaround: ~40% chance to replace last chord with a setup chord
+  // that creates V-i or V-I resolution back to the first chord on loop
+  const firstChord = prog[0];
+  if (prog.length >= 3 && TURNAROUNDS[firstChord] && Math.random() < 0.4) {
+    const turnaround = TURNAROUNDS[firstChord];
+    // Use the first chord of the turnaround as the setup (e.g., B7 before Em)
+    prog[prog.length - 1] = turnaround[0];
+  }
+
+  return prog;
 }
 
 // Generate 12-bar blues progression

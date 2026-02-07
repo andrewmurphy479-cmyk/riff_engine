@@ -1,13 +1,75 @@
-import { TabEvent, GeneratorConfig, RiffLayer, LayerState, LayeredRiff } from './types';
+import { TabEvent, GeneratorConfig, RiffLayer, LayerState, LayeredRiff, Mood } from './types';
 import { generateProgression } from './progressions';
 import { getChordBass, getChordAltBass, getChordTrebleForComplexity } from './chords';
+import { getMoodRhythm } from './styles';
 import {
   initializePhrase,
   getPhraseConfig,
   getMelodicTarget,
   generateMelodicLine,
   getAbsolutePitch,
+  generateMotif,
+  getCurrentMotif,
+  transposeMotifToChord,
+  varyMotif,
+  shouldUseMotif,
+  Motif,
 } from './voiceLeading';
+
+// Chord root MIDI notes (for motif transposition)
+const CHORD_ROOTS: Record<string, number> = {
+  'C': 48, 'Cm': 48,
+  'D': 50, 'Dm': 50,
+  'E': 52, 'Em': 52,
+  'F': 53, 'Fm': 53,
+  'G': 55, 'Gm': 55,
+  'A': 57, 'Am': 57,
+  'B': 59, 'Bm': 59, 'B7': 59,
+};
+
+// Assign velocity to layered events based on layer type and beat position
+function assignLayerVelocity(events: TabEvent[], layer: RiffLayer, mood: Mood): void {
+  const moodRhythm = getMoodRhythm(mood);
+
+  for (const event of events) {
+    const stepInBar = event.step % 16;
+
+    // Base velocity from beat strength
+    let velocity: number;
+    if (stepInBar === 0 || stepInBar === 8) {
+      velocity = 0.85;
+    } else if (stepInBar === 4 || stepInBar === 12) {
+      velocity = 0.75;
+    } else {
+      velocity = 0.6;
+    }
+
+    // Accent boost
+    if (moodRhythm.accentSteps.includes(stepInBar)) {
+      velocity = Math.min(1.0, velocity + 0.1);
+    }
+
+    // Layer-specific ranges
+    switch (layer) {
+      case 'bass':
+        velocity = Math.max(0.75, Math.min(0.85, velocity));
+        break;
+      case 'fills':
+        velocity = Math.max(0.5, Math.min(0.65, velocity));
+        break;
+      // melody: full range
+    }
+
+    // Technique adjustments
+    if (event.technique === 'hammer' || event.technique === 'pull') {
+      velocity = Math.min(velocity, 0.55);
+    }
+
+    // Slight random variation
+    velocity += (Math.random() - 0.5) * 0.1;
+    event.velocity = Math.max(0.3, Math.min(1.0, velocity));
+  }
+}
 
 // Generate just the chord progression
 export function generateProgressionForRiff(config: GeneratorConfig): string[] {
@@ -26,8 +88,9 @@ export function generateMelodyLayer(
 ): TabEvent[] {
   const events: TabEvent[] = [];
 
-  // Initialize phrase for melodic continuity
+  // Initialize phrase and motif for melodic continuity
   initializePhrase(config.mood);
+  const motif = generateMotif(config.complexity);
 
   let lastNote: { string: any; fret: number } | null = null;
 
@@ -45,6 +108,25 @@ export function generateMelodyLayer(
     const melodicTarget = getMelodicTarget(treble, phraseConfig, lastNote);
     const melodicLine = generateMelodicLine(treble, phraseConfig, numNotes, lastNote);
 
+    // Check for motif notes
+    let motifNotes: { note: { string: any; fret: number }; step: number }[] | null = null;
+    if (shouldUseMotif(barIndex, config.complexity)) {
+      const currentMotif = getCurrentMotif();
+      if (currentMotif) {
+        // Pick variation by bar position
+        let variedMotif: Motif;
+        switch (barIndex) {
+          case 0: variedMotif = currentMotif; break;
+          case 1: variedMotif = Math.random() < 0.5 ? currentMotif : varyMotif(currentMotif, 'retrograde'); break;
+          case 2: variedMotif = varyMotif(currentMotif, 'invert'); break;
+          default: variedMotif = currentMotif;
+        }
+        const chordRoot = CHORD_ROOTS[chord] || 48;
+        const transposed = transposeMotifToChord(variedMotif, chordRoot, 4, 'G');
+        if (transposed.length > 0) motifNotes = transposed;
+      }
+    }
+
     // Melody positions - beats 2 and 4 are primary (steps 4 and 12)
     const positions = numNotes <= 2
       ? [4, 12]
@@ -52,13 +134,37 @@ export function generateMelodyLayer(
         ? [4, 8, 12]
         : [4, 6, 10, 12];
 
-    // Place melody notes
-    for (let i = 0; i < Math.min(melodicLine.length, positions.length); i++) {
-      const step = positions[i] + barIndex * 16;
-      const note = melodicLine[i];
+    const offset = barIndex * 16;
+    const usedMotifSteps = new Set<number>();
+
+    // Place motif notes first
+    if (motifNotes) {
+      for (const mn of motifNotes) {
+        const step = mn.step + offset;
+        events.push({
+          string: mn.note.string,
+          fret: mn.note.fret,
+          step,
+          duration: 2,
+          layer: 'melody',
+        });
+        lastNote = mn.note;
+        usedMotifSteps.add(mn.step); // Track local step (0-15)
+      }
+    }
+
+    // Fill remaining positions with melodic line
+    let melodicIdx = 0;
+    for (const pos of positions) {
+      if (usedMotifSteps.has(pos)) continue;
+      if (melodicIdx >= melodicLine.length) break;
+
+      const step = pos + offset;
+      const note = melodicLine[melodicIdx];
+      melodicIdx++;
 
       // For resolution, use target
-      const useNote = (phraseConfig.isResolution && i === melodicLine.length - 1)
+      const useNote = (phraseConfig.isResolution && melodicIdx === melodicLine.length)
         ? melodicTarget
         : note;
 
@@ -73,6 +179,9 @@ export function generateMelodyLayer(
       lastNote = useNote;
     }
   }
+
+  // Assign velocity dynamics for melody layer
+  assignLayerVelocity(events, 'melody', config.mood);
 
   return events;
 }
@@ -124,6 +233,9 @@ export function generateBassLayer(
       }
     }
   }
+
+  // Assign velocity dynamics for bass layer
+  assignLayerVelocity(events, 'bass', config.mood);
 
   return events;
 }
@@ -223,6 +335,9 @@ export function generateFillsLayer(
       }
     }
   }
+
+  // Assign velocity dynamics for fills layer
+  assignLayerVelocity(events, 'fills', config.mood);
 
   return events;
 }

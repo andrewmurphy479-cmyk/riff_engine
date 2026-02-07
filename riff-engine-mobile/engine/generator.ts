@@ -1,6 +1,6 @@
 import { TabEvent, GeneratorConfig, GeneratedRiff, Mood, Style, Difficulty } from './types';
 import { generateProgression } from './progressions';
-import { STYLE_FUNCTIONS, applyBassWalk, applyFill, applyOrnaments, resetVoiceLeading, initializeMotif, BarConfig } from './styles';
+import { STYLE_FUNCTIONS, applyBassWalk, applyFill, applyOrnaments, resetVoiceLeading, initializeMotif, assignVelocityToEvents, BarConfig } from './styles';
 import { GuitarString } from './types';
 import {
   getDifficultyConfig,
@@ -78,6 +78,9 @@ function generateEventsForProgression(
     // Apply ornaments (hammer-ons, pull-offs) for higher complexity
     applyOrnaments(barEvents, barConfig);
 
+    // Assign velocity dynamics
+    assignVelocityToEvents(barEvents, barConfig);
+
     // Offset events to correct bar position
     const offset = barIndex * 16;
     for (const ev of barEvents) {
@@ -87,6 +90,7 @@ function generateEventsForProgression(
         step: ev.step + offset,
         duration: ev.duration,
         technique: ev.technique, // Preserve ornament markers
+        velocity: ev.velocity,   // Preserve velocity dynamics
       });
     }
   }

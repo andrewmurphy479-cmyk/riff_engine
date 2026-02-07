@@ -69,14 +69,22 @@ class AudioEngineImpl {
     const maxStep = Math.max(...events.map(e => e.step + e.duration));
     const totalDurationMs = maxStep * msPerStep;
 
-    // Schedule each note
+    // Schedule each note with humanized timing
     for (const event of events) {
       const delayMs = event.step * msPerStep;
       const noteDurationMs = event.duration * msPerStep;
 
+      // Add micro-timing jitter for humanization
+      const stepInBar = event.step % 16;
+      const isDownbeat = stepInBar % 4 === 0;
+      const jitterRange = isDownbeat ? 3 : 8; // Tighter on downbeats, looser on off-beats
+      const jitterMs = (Math.random() - 0.5) * 2 * jitterRange;
+      const humanizedDelay = Math.max(0, delayMs + jitterMs);
+
+      const velocity = event.velocity ?? 0.7;
       const timeoutId = setTimeout(() => {
-        this.playNote(event.string, event.fret, noteDurationMs);
-      }, delayMs);
+        this.playNote(event.string, event.fret, noteDurationMs, velocity);
+      }, humanizedDelay);
 
       this.scheduledNotes.push({ timeoutId });
     }
@@ -90,13 +98,14 @@ class AudioEngineImpl {
   private async playNote(
     string: GuitarString,
     fret: number,
-    durationMs: number
+    durationMs: number,
+    velocity: number = 0.7
   ): Promise<void> {
     if (!this.isPlaying) return;
 
     try {
       // Use the SamplePlayer for actual audio playback
-      await SamplePlayer.playNote(string, fret, 0.7, durationMs);
+      await SamplePlayer.playNote(string, fret, velocity, durationMs);
     } catch (error) {
       console.error('Error playing note:', error);
     }

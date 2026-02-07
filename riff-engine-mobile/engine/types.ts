@@ -18,6 +18,7 @@ export interface TabEvent {
   duration: number;
   technique?: Technique;  // Optional ornament marker
   layer?: RiffLayer;      // Which layer this event belongs to
+  velocity?: number;      // 0.0-1.0, dynamics (default 0.7)
 }
 
 // Chord definition

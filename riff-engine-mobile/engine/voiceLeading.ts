@@ -20,6 +20,16 @@ export function melodicDistance(a: NotePosition, b: NotePosition): number {
   return Math.abs(getAbsolutePitch(a) - getAbsolutePitch(b));
 }
 
+// Calculate fretboard physical distance (fret + string distance)
+// String distance weighted 2x because cross-string jumps are harder than fret slides
+const STRING_INDEX: Record<GuitarString, number> = { 'E': 0, 'A': 1, 'D': 2, 'G': 3, 'B': 4, 'e': 5 };
+
+export function fretboardDistance(a: NotePosition, b: NotePosition): number {
+  const fretDist = Math.abs(a.fret - b.fret);
+  const stringDist = Math.abs(STRING_INDEX[a.string] - STRING_INDEX[b.string]);
+  return fretDist + stringDist * 2;
+}
+
 // Select next note with voice leading preference
 // Prefers notes close to the previous note, with some randomness
 export function selectWithVoiceLeading(
@@ -31,10 +41,10 @@ export function selectWithVoiceLeading(
     return options[Math.floor(Math.random() * options.length)];
   }
 
-  // Score each option by distance (lower is better)
+  // Score each option by blended melodic + fretboard distance (lower is better)
   const scored = options.map(note => ({
     note,
-    distance: melodicDistance(note, previous),
+    distance: melodicDistance(note, previous) * 0.6 + fretboardDistance(note, previous) * 0.4,
   }));
 
   // Sort by distance
@@ -500,7 +510,7 @@ export function selectTowardTarget(
   const targetPitch = getAbsolutePitch(target);
   const prevPitch = previous ? getAbsolutePitch(previous) : targetPitch;
 
-  // Score each option
+  // Score each option with melodic + fretboard cost
   const scored = options.map(note => {
     const notePitch = getAbsolutePitch(note);
 
@@ -515,8 +525,11 @@ export function selectTowardTarget(
     // Step size (prefer small steps)
     const stepSize = Math.abs(notePitch - prevPitch);
 
+    // Fretboard cost (prefer physically close positions)
+    const fretCost = previous ? fretboardDistance(note, previous) : 0;
+
     // Combined score (lower is better)
-    let score = distToTarget * directness;
+    let score = distToTarget * directness * 0.6 + fretCost * 0.4;
     if (!rightDirection) score += 5;
     if (stepSize > 5) score += stepSize - 5;
 

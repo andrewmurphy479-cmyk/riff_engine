@@ -157,6 +157,44 @@ let lastTrebleNote: NotePosition | null = null;
 // Track current motif for the riff
 let activeMotif: Motif | null = null;
 
+// Get motif notes for a specific bar, transposed to the current chord
+// Returns note+step pairs, or null if no motif should be used this bar
+export function getMotifNotesForBar(
+  chord: string,
+  config: BarConfig
+): { note: NotePosition; step: number }[] | null {
+  if (!shouldUseMotif(config.barPosition, config.complexity)) return null;
+
+  const motif = getCurrentMotif();
+  if (!motif) return null;
+
+  // Pick variation by bar position
+  let variedMotif: Motif;
+  switch (config.barPosition) {
+    case 0:
+      variedMotif = motif; // Original - introduce the motif
+      break;
+    case 1:
+      variedMotif = Math.random() < 0.5 ? motif : varyMotif(motif, 'retrograde');
+      break;
+    case 2:
+      variedMotif = varyMotif(motif, 'invert');
+      break;
+    case 3:
+      variedMotif = motif; // Original for resolution
+      break;
+    default:
+      variedMotif = motif;
+  }
+
+  const chordRoot = getChordRoot(chord);
+  // Transpose motif to chord, placing at step 4 (beat 2) for melodic interest
+  const baseStep = 4;
+  const motifNotes = transposeMotifToChord(variedMotif, chordRoot, baseStep, 'G');
+
+  return motifNotes.length > 0 ? motifNotes : null;
+}
+
 export function resetVoiceLeading(): void {
   lastTrebleNote = null;
   resetMotif();
@@ -338,13 +376,31 @@ export function barTravis(chord: string, config: BarConfig): TabEvent[] {
       ? [4, 10, 12]  // Medium: add a pickup
       : [4, 6, 10, 12, 14];  // Complex: more movement
 
-  // Match melody notes to positions
-  for (let i = 0; i < Math.min(melodicLine.length, melodyPositions.length); i++) {
-    const step = melodyPositions[i];
-    const note = melodicLine[i];
+  // Check for motif notes — use them instead of melodic line when available
+  const motifNotes = getMotifNotesForBar(chord, config);
+  const usedMotifSteps = new Set<number>();
+
+  if (motifNotes) {
+    // Place motif notes first at their designated steps
+    for (const mn of motifNotes) {
+      if (addEventIfFree(events, used, mn.note.string, mn.note.fret, mn.step)) {
+        lastTrebleNote = mn.note;
+        usedMotifSteps.add(mn.step);
+      }
+    }
+  }
+
+  // Fill remaining melody positions with melodic line (skip steps already used by motif)
+  let melodicIdx = 0;
+  for (const step of melodyPositions) {
+    if (usedMotifSteps.has(step)) continue;
+    if (melodicIdx >= melodicLine.length) break;
+
+    const note = melodicLine[melodicIdx];
+    melodicIdx++;
 
     // For the last note in resolution bars, ensure it's the target
-    const useNote = (phraseConfig.isResolution && i === melodicLine.length - 1)
+    const useNote = (phraseConfig.isResolution && melodicIdx === melodicLine.length)
       ? melodicTarget
       : note;
 
@@ -407,6 +463,15 @@ export function barArpeggio(chord: string, config: BarConfig): TabEvent[] {
     steps = [0, 2, 4, 6, 8, 10, 12, 14];
   }
 
+  // Check for motif notes — inject at accent positions
+  const motifNotes = getMotifNotesForBar(chord, config);
+  const motifByStep = new Map<number, NotePosition>();
+  if (motifNotes) {
+    for (const mn of motifNotes) {
+      motifByStep.set(mn.step, mn.note);
+    }
+  }
+
   let trebleIdx = 0;
   let ascending = direction === 'ascending';
 
@@ -425,7 +490,11 @@ export function barArpeggio(chord: string, config: BarConfig): TabEvent[] {
     } else {
       let note: NotePosition;
 
-      if (direction === 'ascending') {
+      // Use motif note at accent positions if available
+      const isAccent = moodRhythm.accentSteps.includes(step);
+      if (isAccent && motifByStep.has(step)) {
+        note = motifByStep.get(step)!;
+      } else if (direction === 'ascending') {
         note = sortedTreble[trebleIdx % sortedTreble.length];
         trebleIdx++;
       } else {
@@ -493,9 +562,31 @@ export function barCrosspick(chord: string, config: BarConfig): TabEvent[] {
     ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     : [0, 2, 4, 6, 8, 10, 12, 14];
 
+  // Check for motif notes — inject at accent positions
+  const motifNotes = getMotifNotesForBar(chord, config);
+  const motifByStep = new Map<number, NotePosition>();
+  if (motifNotes) {
+    for (const mn of motifNotes) {
+      motifByStep.set(mn.step, mn.note);
+    }
+  }
+
+  // Get mood accent steps for motif injection
+  const moodRhythm = getMoodRhythm(config.mood);
+
   for (let i = 0; i < steps.length; i++) {
-    const note = picked[order[i % order.length]];
-    addEventIfFree(events, used, note.string, note.fret, steps[i]);
+    const step = steps[i];
+    const isAccent = moodRhythm.accentSteps.includes(step);
+
+    // Use motif note at accent positions if available
+    let note: NotePosition;
+    if (isAccent && motifByStep.has(step)) {
+      note = motifByStep.get(step)!;
+    } else {
+      note = picked[order[i % order.length]];
+    }
+
+    addEventIfFree(events, used, note.string, note.fret, step);
     lastTrebleNote = note;
   }
 
@@ -551,6 +642,15 @@ export function barStrum(chord: string, config: BarConfig): TabEvent[] {
     hits = hits.filter((_, i) => i === 0 || Math.random() > moodRhythm.restProb * 0.5);
   }
 
+  // Check for motif notes — inject at accent positions
+  const motifNotes = getMotifNotesForBar(chord, config);
+  const motifByStep = new Map<number, NotePosition>();
+  if (motifNotes) {
+    for (const mn of motifNotes) {
+      motifByStep.set(mn.step, mn.note);
+    }
+  }
+
   for (const step of hits) {
     // Bass on strong beats - alternating root/5th
     const isStrongBeat = step === 0 || step === 8;
@@ -561,6 +661,14 @@ export function barStrum(chord: string, config: BarConfig): TabEvent[] {
       addEventIfFree(events, used, bassNote.string, bassNote.fret, step, 2);
     } else if (Math.random() < 0.3) {
       addEventIfFree(events, used, bass.string, bass.fret, step, 2);
+    }
+
+    // Use motif note at accent positions if available
+    if (isAccent && motifByStep.has(step)) {
+      const mn = motifByStep.get(step)!;
+      if (addEventIfFree(events, used, mn.string, mn.fret, step)) {
+        lastTrebleNote = mn;
+      }
     }
 
     // Strum treble notes - more notes on accented/strong beats
@@ -651,6 +759,53 @@ export function applyFill(
       // Only add one fill note for lower complexity
       if (config.complexity < 3) break;
     }
+  }
+}
+
+// Assign velocity to a single event based on beat strength, technique, and layer
+export function assignVelocity(event: TabEvent, config: BarConfig): void {
+  const stepInBar = event.step % 16;
+  const moodRhythm = getMoodRhythm(config.mood);
+
+  // Base velocity from beat strength
+  let velocity: number;
+  if (stepInBar === 0 || stepInBar === 8) {
+    velocity = 0.85; // Downbeats
+  } else if (stepInBar === 4 || stepInBar === 12) {
+    velocity = 0.75; // Backbeats
+  } else {
+    velocity = 0.6; // Off-beats
+  }
+
+  // Accent boost from mood rhythms
+  if (moodRhythm.accentSteps.includes(stepInBar)) {
+    velocity = Math.min(1.0, velocity + 0.1);
+  }
+
+  // Layer adjustments
+  if (event.layer === 'bass') {
+    velocity = Math.max(0.75, Math.min(0.85, velocity));
+  } else if (event.layer === 'fills') {
+    velocity = Math.max(0.5, Math.min(0.65, velocity));
+  }
+  // melody layer: use full range as computed
+
+  // Technique adjustments
+  if (event.technique === 'hammer' || event.technique === 'pull') {
+    velocity = Math.min(velocity, 0.55);
+  }
+
+  // Add slight random variation (+/- 0.05)
+  velocity += (Math.random() - 0.5) * 0.1;
+  velocity = Math.max(0.3, Math.min(1.0, velocity));
+
+  event.velocity = velocity;
+}
+
+// Assign velocity to all events in an array
+export function assignVelocityToEvents(events: TabEvent[], config: BarConfig): void {
+  for (const event of events) {
+    assignVelocity(event, config);
   }
 }
 

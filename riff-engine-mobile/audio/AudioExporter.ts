@@ -49,11 +49,20 @@ class AudioExporterImpl {
       // Create PCM buffer (using Float32 for mixing, then convert to Int16)
       const mixBuffer = new Float32Array(totalSamples);
 
-      // Render each note into the mix buffer
+      // Render each note into the mix buffer with humanized timing
       for (let i = 0; i < events.length; i++) {
         const event = events[i];
-        const startSample = Math.floor(event.step * secondsPerStep * SAMPLE_RATE);
+
+        // Add micro-timing jitter for humanization
+        const stepInBar = event.step % 16;
+        const isDownbeat = stepInBar % 4 === 0;
+        const jitterRange = isDownbeat ? 3 : 8; // ms
+        const jitterMs = (Math.random() - 0.5) * 2 * jitterRange;
+        const jitterSamples = Math.round((jitterMs / 1000) * SAMPLE_RATE);
+
+        const startSample = Math.max(0, Math.floor(event.step * secondsPerStep * SAMPLE_RATE) + jitterSamples);
         const durationSamples = Math.floor(event.duration * secondsPerStep * SAMPLE_RATE);
+        const velocity = event.velocity ?? 0.7;
 
         // Synthesize a plucked string sound
         this.renderNote(
@@ -61,7 +70,8 @@ class AudioExporterImpl {
           event.string,
           event.fret,
           startSample,
-          durationSamples
+          durationSamples,
+          velocity
         );
 
         // Update progress
@@ -121,7 +131,8 @@ class AudioExporterImpl {
     guitarString: GuitarString,
     fret: number,
     startSample: number,
-    durationSamples: number
+    durationSamples: number,
+    velocity: number = 0.7
   ): void {
     const midiNote = fretToMidiNote(guitarString, fret);
     const frequency = midiToFrequency(midiNote);
@@ -131,8 +142,8 @@ class AudioExporterImpl {
     const attackTime = 0.002; // 2ms attack
     const attackSamples = Math.floor(attackTime * SAMPLE_RATE);
 
-    // Base amplitude (quieter for higher notes)
-    const baseAmplitude = 0.3 * (1 - (midiNote - 40) / 60 * 0.3);
+    // Base amplitude (quieter for higher notes), scaled by velocity
+    const baseAmplitude = 0.3 * (1 - (midiNote - 40) / 60 * 0.3) * velocity;
 
     for (let i = 0; i < durationSamples; i++) {
       const sampleIndex = startSample + i;
