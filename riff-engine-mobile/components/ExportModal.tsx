@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   modal: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     padding: spacing.xl,
     width: '100%',
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.h3.fontSize,
-    fontWeight: '800',
+    fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: spacing.md,
     textAlign: 'center',
@@ -219,14 +219,12 @@ const styles = StyleSheet.create({
   formatValue: {
     fontSize: typography.body.fontSize,
     color: colors.textPrimary,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
   },
   infoLabel: {
     fontSize: typography.body.fontSize,
@@ -235,7 +233,7 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: typography.body.fontSize,
     color: colors.textPrimary,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   buttonRow: {
     flexDirection: 'row',
@@ -248,13 +246,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundSecondary,
     borderRadius: borderRadius.md,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   cancelButtonText: {
     fontSize: typography.body.fontSize,
     color: colors.textSecondary,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   exportButton: {
     flex: 1,
@@ -266,7 +262,7 @@ const styles = StyleSheet.create({
   exportButtonText: {
     fontSize: typography.body.fontSize,
     color: colors.white,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   progressContainer: {
     alignItems: 'center',
@@ -326,6 +322,6 @@ const styles = StyleSheet.create({
   shareButtonText: {
     fontSize: typography.body.fontSize,
     color: colors.white,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 });

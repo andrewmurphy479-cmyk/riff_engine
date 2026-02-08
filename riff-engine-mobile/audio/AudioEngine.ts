@@ -1,8 +1,9 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { Audio } from 'expo-av';
-import { TabEvent, GuitarString } from '../engine/types';
+import { TabEvent, GuitarString, Technique } from '../engine/types';
 import { SamplePlayer } from './SamplePlayer';
 import { SampleLoader } from './SampleLoader';
+import { fretToMidiNote } from './noteMapping';
 
 interface ScheduledNote {
   timeoutId: ReturnType<typeof setTimeout>;
@@ -24,14 +25,12 @@ class AudioEngineImpl {
     if (this.isInitialized) return;
 
     try {
-      // Configure audio mode for iOS (allows playback in silent mode)
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: false,
         shouldDuckAndroid: true,
       });
 
-      // Initialize sample loader and player
       await SampleLoader.initialize();
       await SamplePlayer.initialize();
 
@@ -39,7 +38,6 @@ class AudioEngineImpl {
       console.log('AudioEngine initialized');
     } catch (error) {
       console.error('Failed to initialize audio engine:', error);
-      // Don't throw - allow app to continue without audio
       this.isInitialized = true;
     }
   }
@@ -53,7 +51,6 @@ class AudioEngineImpl {
       await this.initialize();
     }
 
-    // Stop any current playback
     this.stop();
 
     if (events.length === 0) return;
@@ -61,35 +58,52 @@ class AudioEngineImpl {
     this.isPlaying = true;
     this.config.onPlaybackStart?.();
 
-    // Calculate timing
     const stepsPerBeat = 4;
     const msPerStep = (60 / bpm / stepsPerBeat) * 1000;
 
-    // Find total duration
     const maxStep = Math.max(...events.map(e => e.step + e.duration));
     const totalDurationMs = maxStep * msPerStep;
 
-    // Schedule each note with humanized timing
+    // Pre-compute grouped jitter: one jitter value per unique step
+    const stepJitter = new Map<number, number>();
+    for (const event of events) {
+      if (!stepJitter.has(event.step)) {
+        const stepInBar = event.step % 16;
+        const isDownbeat = stepInBar % 4 === 0;
+        const jitterRange = isDownbeat ? 3 : 8;
+        stepJitter.set(event.step, (Math.random() - 0.5) * 2 * jitterRange);
+      }
+    }
+
+    // Pre-generate all tones before scheduling (includes technique + string)
+    const noteSpecs = events.map(event => ({
+      midiNote: fretToMidiNote(event.string, event.fret),
+      durationMs: event.duration * msPerStep,
+      velocity: event.velocity ?? 0.7,
+      technique: event.technique ?? undefined,
+      guitarString: event.string,
+    }));
+    await SamplePlayer.preGenerateTones(noteSpecs);
+
+    // If stopped while pre-generating, bail out
+    if (!this.isPlaying) return;
+
+    // Schedule each note with grouped jitter
     for (const event of events) {
       const delayMs = event.step * msPerStep;
       const noteDurationMs = event.duration * msPerStep;
-
-      // Add micro-timing jitter for humanization
-      const stepInBar = event.step % 16;
-      const isDownbeat = stepInBar % 4 === 0;
-      const jitterRange = isDownbeat ? 3 : 8; // Tighter on downbeats, looser on off-beats
-      const jitterMs = (Math.random() - 0.5) * 2 * jitterRange;
+      const jitterMs = stepJitter.get(event.step) ?? 0;
       const humanizedDelay = Math.max(0, delayMs + jitterMs);
 
       const velocity = event.velocity ?? 0.7;
+      const technique = event.technique ?? undefined;
       const timeoutId = setTimeout(() => {
-        this.playNote(event.string, event.fret, noteDurationMs, velocity);
+        this.playNote(event.string, event.fret, noteDurationMs, velocity, technique);
       }, humanizedDelay);
 
       this.scheduledNotes.push({ timeoutId });
     }
 
-    // Schedule end callback
     this.endTimeoutId = setTimeout(() => {
       this.handlePlaybackEnd();
     }, totalDurationMs + 200);
@@ -99,13 +113,13 @@ class AudioEngineImpl {
     string: GuitarString,
     fret: number,
     durationMs: number,
-    velocity: number = 0.7
+    velocity: number = 0.7,
+    technique?: Technique
   ): Promise<void> {
     if (!this.isPlaying) return;
 
     try {
-      // Use the SamplePlayer for actual audio playback
-      await SamplePlayer.playNote(string, fret, velocity, durationMs);
+      await SamplePlayer.playNote(string, fret, velocity, durationMs, technique);
     } catch (error) {
       console.error('Error playing note:', error);
     }
@@ -120,19 +134,16 @@ class AudioEngineImpl {
   }
 
   stop(): void {
-    // Clear all scheduled notes
     for (const note of this.scheduledNotes) {
       clearTimeout(note.timeoutId);
     }
     this.scheduledNotes = [];
 
-    // Clear end timeout
     if (this.endTimeoutId) {
       clearTimeout(this.endTimeoutId);
       this.endTimeoutId = null;
     }
 
-    // Stop all playing sounds
     SamplePlayer.stopAll();
 
     if (this.isPlaying) {
@@ -150,10 +161,8 @@ class AudioEngineImpl {
   }
 }
 
-// Singleton instance
 export const AudioEngine = new AudioEngineImpl();
 
-// React hook for using the audio engine
 export interface UseAudioEngineOptions {
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
@@ -175,7 +184,6 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
       onPlaybackEnd: () => optionsRef.current.onPlaybackEnd?.(),
     });
 
-    // Initialize on mount
     AudioEngine.initialize().catch(console.error);
 
     return () => {

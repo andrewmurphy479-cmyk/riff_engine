@@ -6,6 +6,8 @@ import { useRiffStore } from '../store/useRiffStore';
 import { getTempoRange } from '../engine/generator';
 import { colors, spacing, typography, borderRadius } from '../theme/colors';
 
+const BAR_OPTIONS = [2, 4, 6, 8];
+
 export function KnobPanel() {
   const {
     mood,
@@ -14,11 +16,13 @@ export function KnobPanel() {
     bluesyFeel,
     complexity,
     energy,
+    numBars,
     setTempo,
     setBassMovement,
     setBluesyFeel,
     setComplexity,
     setEnergy,
+    setNumBars,
     isCustomizeExpanded,
     toggleCustomizeExpanded,
   } = useRiffStore();
@@ -40,6 +44,32 @@ export function KnobPanel() {
 
       {isCustomizeExpanded && (
         <Card style={styles.card}>
+          <Text style={styles.sectionLabel}>BARS</Text>
+          <View style={styles.barsRow}>
+            {BAR_OPTIONS.map((n) => (
+              <TouchableOpacity
+                key={n}
+                style={[
+                  styles.barChip,
+                  numBars === n && styles.barChipActive,
+                ]}
+                onPress={() => setNumBars(n)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.barChipText,
+                    numBars === n && styles.barChipTextActive,
+                  ]}
+                >
+                  {n}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.divider} />
+
           <Slider
             label="Tempo"
             value={tempo}
@@ -88,7 +118,7 @@ export function KnobPanel() {
 const styles = StyleSheet.create({
   container: {
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   header: {
     flexDirection: 'row',
@@ -98,13 +128,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   headerText: {
     color: colors.textPrimary,
     fontSize: typography.body.fontSize,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   chevron: {
     color: colors.textMuted,
@@ -126,7 +154,39 @@ const styles = StyleSheet.create({
   tempoValue: {
     color: colors.accent,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
+  },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
+  },
+  barsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  barChip: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.chipInactive,
+    borderRadius: borderRadius.sm,
+  },
+  barChipActive: {
+    backgroundColor: colors.chipActive,
+  },
+  barChipText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  barChipTextActive: {
+    color: colors.accent,
   },
   divider: {
     height: 1,

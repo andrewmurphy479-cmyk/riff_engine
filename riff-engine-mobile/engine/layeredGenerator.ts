@@ -1,32 +1,11 @@
-import { TabEvent, GeneratorConfig, RiffLayer, LayerState, LayeredRiff, Mood } from './types';
+import { TabEvent, GeneratorConfig, RiffLayer, LayerState, LayeredRiff, Mood, NotePosition } from './types';
 import { generateProgression } from './progressions';
 import { getChordBass, getChordAltBass, getChordTrebleForComplexity } from './chords';
-import { getMoodRhythm } from './styles';
+import { getMoodRhythm, BarConfig } from './styles';
 import { getDifficultyConfig, getAllowedChordsForDifficulty } from './difficulty';
-import {
-  initializePhrase,
-  getPhraseConfig,
-  getMelodicTarget,
-  generateMelodicLine,
-  getAbsolutePitch,
-  generateMotif,
-  getCurrentMotif,
-  transposeMotifToChord,
-  varyMotif,
-  shouldUseMotif,
-  Motif,
-} from './voiceLeading';
-
-// Chord root MIDI notes (for motif transposition)
-const CHORD_ROOTS: Record<string, number> = {
-  'C': 48, 'Cm': 48,
-  'D': 50, 'Dm': 50,
-  'E': 52, 'Em': 52,
-  'F': 53, 'Fm': 53,
-  'G': 55, 'Gm': 55,
-  'A': 57, 'Am': 57,
-  'B': 59, 'Bm': 59, 'B7': 59,
-};
+import { getAbsolutePitch } from './voiceLeading';
+import { selectBlueprint, varyBlueprint } from './blueprints';
+import { resolveBlueprintBass, resolveBlueprintTreble, findBlueprintGaps } from './blueprintResolver';
 
 // Assign velocity to layered events based on layer type and beat position
 function assignLayerVelocity(events: TabEvent[], layer: RiffLayer, mood: Mood): void {
@@ -87,183 +66,118 @@ export function generateProgressionForRiff(config: GeneratorConfig): string[] {
   );
 }
 
-// Generate melody layer only
+// Build bar config for layered generation
+function buildLayerBarConfig(config: GeneratorConfig, barPosition: number, totalBars: number): BarConfig {
+  const diffConfig = config.difficulty
+    ? getDifficultyConfig(config.difficulty)
+    : null;
+
+  return {
+    density: Math.max(0.55, Math.min(1.45, 0.75 + 0.1 * config.energy)),
+    complexity: config.complexity,
+    bassMovement: config.bassMovement,
+    melody: Math.round((config.complexity + config.energy) / 2),
+    openStrings: 3,
+    energy: config.energy,
+    barPosition,
+    totalBars,
+    mood: config.mood,
+    maxFret: diffConfig?.maxFret ?? 12,
+    allowSyncopation: diffConfig?.allowSyncopation ?? true,
+    allowBassWalks: diffConfig?.allowBassWalks ?? true,
+    fillProbMult: diffConfig?.fillProbMult ?? 1.0,
+    ornamentProbMult: diffConfig?.ornamentProbMult ?? 1.0,
+    maxMelodyNotesPerBar: diffConfig?.maxMelodyNotesPerBar ?? 8,
+  };
+}
+
+// Generate melody layer using blueprint system
 export function generateMelodyLayer(
   progression: string[],
   config: GeneratorConfig
 ): TabEvent[] {
-  const events: TabEvent[] = [];
+  // Select a blueprint for melodic identity
+  const blueprint = selectBlueprint(config.style, {
+    energy: config.energy,
+    complexity: config.complexity,
+    mood: config.mood,
+  });
 
-  // Initialize phrase and motif for melodic continuity
-  initializePhrase(config.mood);
-  const motif = generateMotif(config.complexity);
-
-  // Get maxFret from difficulty config
-  const maxFret = config.difficulty
-    ? getDifficultyConfig(config.difficulty).maxFret
-    : 12;
-
-  let lastNote: { string: any; fret: number } | null = null;
+  const allEvents: TabEvent[] = [];
+  let lastNote: NotePosition | null = null;
 
   for (let barIndex = 0; barIndex < progression.length; barIndex++) {
     const chord = progression[barIndex];
-    const treble = getChordTrebleForComplexity(chord, config.complexity, maxFret);
+    const nextChord = progression[(barIndex + 1) % progression.length];
+    const barConfig = buildLayerBarConfig(config, barIndex, progression.length);
+    const offset = barIndex * 16;
 
-    // Get phrase config for musical structure
-    const phraseConfig = getPhraseConfig(barIndex, progression.length, config.mood);
+    // Vary blueprint for this bar position
+    const variedBP = varyBlueprint(blueprint, barIndex, progression.length);
 
-    // Determine number of melody notes (simpler = fewer), capped by difficulty
-    const diffConfig = config.difficulty
-      ? getDifficultyConfig(config.difficulty)
-      : null;
-    const maxMelody = diffConfig?.maxMelodyNotesPerBar ?? 8;
-    const numNotes = Math.min(
-      config.complexity <= 2 ? 2 : config.complexity <= 3 ? 3 : 4,
-      maxMelody
+    // Resolve only treble notes for melody layer
+    const result = resolveBlueprintTreble(
+      variedBP, chord, barIndex, offset, barConfig, lastNote, nextChord
     );
 
-    // Get melodic target and generate line
-    const melodicTarget = getMelodicTarget(treble, phraseConfig, lastNote);
-    const melodicLine = generateMelodicLine(treble, phraseConfig, numNotes, lastNote);
-
-    // Check for motif notes
-    let motifNotes: { note: { string: any; fret: number }; step: number }[] | null = null;
-    if (shouldUseMotif(barIndex, config.complexity)) {
-      const currentMotif = getCurrentMotif();
-      if (currentMotif) {
-        // Pick variation by bar position
-        let variedMotif: Motif;
-        switch (barIndex) {
-          case 0: variedMotif = currentMotif; break;
-          case 1: variedMotif = Math.random() < 0.5 ? currentMotif : varyMotif(currentMotif, 'retrograde'); break;
-          case 2: variedMotif = varyMotif(currentMotif, 'invert'); break;
-          default: variedMotif = currentMotif;
-        }
-        const chordRoot = CHORD_ROOTS[chord] || 48;
-        const transposed = transposeMotifToChord(variedMotif, chordRoot, 4, 'G');
-        if (transposed.length > 0) motifNotes = transposed;
-      }
-    }
-
-    // Melody positions - beats 2 and 4 are primary (steps 4 and 12)
-    let positions = numNotes <= 2
-      ? [4, 12]
-      : numNotes <= 3
-        ? [4, 8, 12]
-        : [4, 6, 10, 12];
-
-    // Enforce difficulty-based melody note cap
-    if (positions.length > maxMelody) {
-      positions = positions.slice(0, maxMelody);
-    }
-
-    const offset = barIndex * 16;
-    const usedMotifSteps = new Set<number>();
-
-    // Place motif notes first
-    if (motifNotes) {
-      for (const mn of motifNotes) {
-        const step = mn.step + offset;
-        events.push({
-          string: mn.note.string,
-          fret: mn.note.fret,
-          step,
-          duration: 2,
-          layer: 'melody',
-        });
-        lastNote = mn.note;
-        usedMotifSteps.add(mn.step); // Track local step (0-15)
-      }
-    }
-
-    // Fill remaining positions with melodic line
-    let melodicIdx = 0;
-    for (const pos of positions) {
-      if (usedMotifSteps.has(pos)) continue;
-      if (melodicIdx >= melodicLine.length) break;
-
-      const step = pos + offset;
-      const note = melodicLine[melodicIdx];
-      melodicIdx++;
-
-      // For resolution, use target
-      const useNote = (phraseConfig.isResolution && melodicIdx === melodicLine.length)
-        ? melodicTarget
-        : note;
-
-      events.push({
-        string: useNote.string,
-        fret: useNote.fret,
-        step,
-        duration: 2,
-        layer: 'melody',
-      });
-
-      lastNote = useNote;
-    }
+    allEvents.push(...result.events);
+    lastNote = result.lastNote;
   }
 
   // Assign velocity dynamics for melody layer
-  assignLayerVelocity(events, 'melody', config.mood);
+  assignLayerVelocity(allEvents, 'melody', config.mood);
 
-  return events;
+  return allEvents;
 }
 
-// Generate bass layer only
+// Generate bass layer using blueprint system
 export function generateBassLayer(
   progression: string[],
   config: GeneratorConfig
 ): TabEvent[] {
-  const events: TabEvent[] = [];
+  // Use same blueprint selection as melody for coherent bass pattern
+  const blueprint = selectBlueprint(config.style, {
+    energy: config.energy,
+    complexity: config.complexity,
+    mood: config.mood,
+  });
+
+  const allEvents: TabEvent[] = [];
 
   for (let barIndex = 0; barIndex < progression.length; barIndex++) {
     const chord = progression[barIndex];
-    const bass = getChordBass(chord);
-    const altBass = getChordAltBass(chord);
-
+    const barConfig = buildLayerBarConfig(config, barIndex, progression.length);
     const offset = barIndex * 16;
 
-    // Alternating bass - the foundation of fingerstyle
-    // Root on beat 1 (step 0)
-    events.push({
-      string: bass.string,
-      fret: bass.fret,
-      step: offset + 0,
-      duration: 2,
-      layer: 'bass',
-    });
+    const variedBP = varyBlueprint(blueprint, barIndex, progression.length);
 
-    // 5th on beat 3 (step 8)
-    events.push({
-      string: altBass.string,
-      fret: altBass.fret,
-      step: offset + 8,
-      duration: 2,
-      layer: 'bass',
-    });
+    // Resolve only bass notes from blueprint
+    const bassEvents = resolveBlueprintBass(variedBP, chord, barIndex, offset, barConfig);
 
-    // Optional: add more bass movement for higher complexity
-    if (config.bassMovement >= 4) {
-      // Add bass on beat 2 occasionally
-      if (Math.random() < 0.3) {
-        events.push({
-          string: bass.string,
-          fret: bass.fret,
-          step: offset + 4,
-          duration: 1,
-          layer: 'bass',
-        });
-      }
+    // Fallback: if blueprint has no bass notes, use alternating bass
+    if (bassEvents.length === 0) {
+      const bass = getChordBass(chord);
+      const altBass = getChordAltBass(chord);
+      allEvents.push({
+        string: bass.string, fret: bass.fret,
+        step: offset + 0, duration: 2, layer: 'bass',
+      });
+      allEvents.push({
+        string: altBass.string, fret: altBass.fret,
+        step: offset + 8, duration: 2, layer: 'bass',
+      });
+    } else {
+      allEvents.push(...bassEvents);
     }
   }
 
   // Assign velocity dynamics for bass layer
-  assignLayerVelocity(events, 'bass', config.mood);
+  assignLayerVelocity(allEvents, 'bass', config.mood);
 
-  return events;
+  return allEvents;
 }
 
-// Generate fills/ornaments layer
+// Generate fills layer — places chord tones in blueprint gaps
 export function generateFillsLayer(
   progression: string[],
   config: GeneratorConfig,
@@ -272,94 +186,73 @@ export function generateFillsLayer(
 ): TabEvent[] {
   const events: TabEvent[] = [];
 
-  // Track used positions
+  // Track used positions from existing layers
   const usedPositions = new Set<string>();
   for (const e of [...existingMelody, ...existingBass]) {
     usedPositions.add(`${e.string}:${e.step}`);
   }
 
-  // Get maxFret from difficulty config
   const maxFret = config.difficulty
     ? getDifficultyConfig(config.difficulty).maxFret
     : 12;
+
+  // Get the blueprint to find gaps
+  const blueprint = selectBlueprint(config.style, {
+    energy: config.energy,
+    complexity: config.complexity,
+    mood: config.mood,
+  });
 
   for (let barIndex = 0; barIndex < progression.length; barIndex++) {
     const chord = progression[barIndex];
     const treble = getChordTrebleForComplexity(chord, config.complexity, maxFret);
     const offset = barIndex * 16;
 
+    const variedBP = varyBlueprint(blueprint, barIndex, progression.length);
+
+    // Find gaps in the blueprint (steps where no notes exist)
+    const gaps = findBlueprintGaps(variedBP, offset);
+
     // Find melody notes in this bar for reference
     const barMelody = existingMelody.filter(
       e => e.step >= offset && e.step < offset + 16
     );
 
-    // Add passing tones and neighbor notes
-    if (config.complexity >= 3) {
-      // Steps that could have fills (between melody notes)
-      const fillPositions = [2, 6, 10, 14];
+    // Place chord tones at gaps, scaled by complexity
+    const fillProb = 0.2 * (config.complexity / 5);
 
-      for (const pos of fillPositions) {
-        const step = offset + pos;
-        const key = (s: string) => `${s}:${step}`;
+    for (const step of gaps) {
+      const key = (s: string) => `${s}:${step}`;
+      const freeNotes = treble.filter(n => !usedPositions.has(key(n.string)));
 
-        // Check if position is free on treble strings
-        const freeNotes = treble.filter(n => !usedPositions.has(key(n.string)));
+      if (freeNotes.length > 0 && Math.random() < fillProb) {
+        // Find a note that connects well between adjacent melody notes
+        const prevMelody = barMelody.filter(m => m.step < step).pop();
+        const nextMelody = barMelody.filter(m => m.step > step)[0];
 
-        if (freeNotes.length > 0 && Math.random() < 0.3 * (config.complexity / 5)) {
-          // Find a note that connects well
-          const prevMelody = barMelody.filter(m => m.step < step).pop();
-          const nextMelody = barMelody.filter(m => m.step > step)[0];
+        let fillNote = freeNotes[0];
 
-          let fillNote = freeNotes[0];
+        if (prevMelody && nextMelody) {
+          const prevPitch = getAbsolutePitch({ string: prevMelody.string, fret: prevMelody.fret });
+          const nextPitch = getAbsolutePitch({ string: nextMelody.string, fret: nextMelody.fret });
+          const targetPitch = (prevPitch + nextPitch) / 2;
 
-          // Prefer notes between prev and next melody
-          if (prevMelody && nextMelody) {
-            const prevPitch = getAbsolutePitch({ string: prevMelody.string, fret: prevMelody.fret });
-            const nextPitch = getAbsolutePitch({ string: nextMelody.string, fret: nextMelody.fret });
-            const targetPitch = (prevPitch + nextPitch) / 2;
-
-            // Find closest to target
-            fillNote = freeNotes.reduce((best, note) => {
-              const bestDist = Math.abs(getAbsolutePitch(best) - targetPitch);
-              const noteDist = Math.abs(getAbsolutePitch(note) - targetPitch);
-              return noteDist < bestDist ? note : best;
-            }, freeNotes[0]);
-          }
-
-          events.push({
-            string: fillNote.string,
-            fret: fillNote.fret,
-            step,
-            duration: 1,
-            layer: 'fills',
-          });
-
-          usedPositions.add(key(fillNote.string));
+          fillNote = freeNotes.reduce((best, note) => {
+            const bestDist = Math.abs(getAbsolutePitch(best) - targetPitch);
+            const noteDist = Math.abs(getAbsolutePitch(note) - targetPitch);
+            return noteDist < bestDist ? note : best;
+          }, freeNotes[0]);
         }
-      }
-    }
 
-    // Add hammer-ons/pull-offs for higher complexity
-    if (config.complexity >= 4) {
-      for (const melodyNote of barMelody) {
-        if (Math.random() < 0.25 && melodyNote.fret >= 2) {
-          const graceStep = melodyNote.step - 1;
-          const graceKey = `${melodyNote.string}:${graceStep}`;
+        events.push({
+          string: fillNote.string,
+          fret: fillNote.fret,
+          step,
+          duration: 1,
+          layer: 'fills',
+        });
 
-          if (!usedPositions.has(graceKey) && graceStep >= offset) {
-            // Add grace note for hammer-on with technique marker
-            events.push({
-              string: melodyNote.string,
-              fret: melodyNote.fret - 2,
-              step: graceStep,
-              duration: 1,
-              layer: 'fills',
-              technique: 'hammer',
-            });
-
-            usedPositions.add(graceKey);
-          }
-        }
+        usedPositions.add(key(fillNote.string));
       }
     }
   }

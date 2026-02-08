@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import { Mood, Style, Difficulty, GeneratedRiff, GeneratorConfig, PlaybackState, Preset, RiffLayer, LayerState, TabEvent } from '../engine/types';
+import { Mood, Style, Difficulty, GeneratedRiff, GeneratorConfig, PlaybackState, Preset, RiffLayer, LayerState, TabEvent, GenerationMode } from '../engine/types';
 import { generateRiff, getTempoRange } from '../engine/generator';
 import {
   getDifficultyConfig,
   clampTempoForDifficulty,
   clampComplexityForDifficulty,
   isStyleAllowedForDifficulty,
+  getAllowedChordsForDifficulty,
 } from '../engine/difficulty';
 import {
   generateProgressionForRiff,
@@ -33,10 +34,13 @@ interface RiffState {
   // Generated riff (legacy full generation)
   currentRiff: GeneratedRiff | null;
 
-  // Layered generation
-  isLayeredMode: boolean;
+  // Generation mode
+  generationMode: GenerationMode;
   progression: string[] | null;
   layers: LayerState;
+
+  // Custom progression
+  customProgression: string[] | null;
 
   // Playback
   playbackState: PlaybackState;
@@ -45,6 +49,7 @@ interface RiffState {
   // UI state
   isCustomizeExpanded: boolean;
   selectedPresetId: string | null;
+  isChordArmoryOpen: boolean;
 
   // Actions
   setMood: (mood: Mood) => void;
@@ -64,8 +69,15 @@ interface RiffState {
   applyPreset: (preset: Preset) => void;
   getConfig: () => GeneratorConfig;
 
-  // Layered generation actions
-  setLayeredMode: (enabled: boolean) => void;
+  // Custom progression actions
+  setCustomProgression: (chords: string[] | null) => void;
+  addChordToProgression: (chord: string) => void;
+  removeChordFromProgression: (index: number) => void;
+
+  // Mode actions
+  setGenerationMode: (mode: GenerationMode) => void;
+  openChordArmory: () => void;
+  closeChordArmory: () => void;
   startLayeredGeneration: () => void;
   generateCurrentLayer: () => void;
   regenerateCurrentLayer: () => void;
@@ -98,10 +110,16 @@ export const useRiffStore = create<RiffState>((set, get) => ({
   isCustomizeExpanded: false,
   selectedPresetId: null,
 
-  // Layered generation state
-  isLayeredMode: true, // Default to layered mode
+  // Generation mode state
+  generationMode: 'layerBuilder' as GenerationMode,
   progression: null,
   layers: createInitialLayerState(),
+
+  // Custom progression
+  customProgression: null,
+
+  // Chord Armory modal
+  isChordArmoryOpen: false,
 
   // Setters
   setMood: (mood) => {
@@ -129,7 +147,15 @@ export const useRiffStore = create<RiffState>((set, get) => ({
       ? state.style
       : config.allowedStyles[0];
 
-    set({ difficulty, tempo, complexity, style, selectedPresetId: null });
+    // Filter custom progression to remove disallowed chords
+    const allowedChords = getAllowedChordsForDifficulty(difficulty);
+    let customProgression = state.customProgression;
+    if (customProgression) {
+      customProgression = customProgression.filter((c) => allowedChords.includes(c));
+      if (customProgression.length === 0) customProgression = null;
+    }
+
+    set({ difficulty, tempo, complexity, style, customProgression, selectedPresetId: null });
   },
 
   setTempo: (tempo) => set({ tempo, selectedPresetId: null }),
@@ -167,7 +193,10 @@ export const useRiffStore = create<RiffState>((set, get) => ({
       difficulty: state.difficulty,
     };
 
-    const riff = generateRiff(config);
+    const customProg = state.customProgression && state.customProgression.length > 0
+      ? state.customProgression
+      : undefined;
+    const riff = generateRiff(config, customProg);
     set({ currentRiff: riff });
   },
 
@@ -203,8 +232,33 @@ export const useRiffStore = create<RiffState>((set, get) => ({
     };
   },
 
-  // Layered generation actions
-  setLayeredMode: (enabled) => set({ isLayeredMode: enabled }),
+  // Custom progression actions
+  setCustomProgression: (chords) => set({ customProgression: chords }),
+
+  addChordToProgression: (chord) => {
+    const state = get();
+    const current = state.customProgression || [];
+    set({ customProgression: [...current, chord] });
+  },
+
+  removeChordFromProgression: (index) => {
+    const state = get();
+    if (!state.customProgression) return;
+    const updated = state.customProgression.filter((_, i) => i !== index);
+    set({ customProgression: updated.length > 0 ? updated : null });
+  },
+
+  // Mode actions
+  setGenerationMode: (mode) => {
+    const updates: Partial<RiffState> = { generationMode: mode };
+    if (mode === 'customChords') {
+      updates.isChordArmoryOpen = true;
+    }
+    set(updates as any);
+  },
+
+  openChordArmory: () => set({ isChordArmoryOpen: true }),
+  closeChordArmory: () => set({ isChordArmoryOpen: false }),
 
   startLayeredGeneration: () => {
     const state = get();
@@ -217,10 +271,12 @@ export const useRiffStore = create<RiffState>((set, get) => ({
     const fillsLocked = oldLayers.layerLocked.fills && oldLayers.fills;
 
     // If melody is locked, keep the old progression
-    // Otherwise generate a new one
+    // Otherwise use custom progression or generate a new one
     const progression = melodyLocked && state.progression
       ? state.progression
-      : generateProgressionForRiff(config);
+      : state.customProgression && state.customProgression.length > 0
+        ? [...state.customProgression]
+        : generateProgressionForRiff(config);
 
     // Create new layer state, preserving complexity and lock settings
     const layers = createInitialLayerState(state.complexity);

@@ -283,6 +283,35 @@ export function generateProgression(
   return prog;
 }
 
+// Pick a random mood-appropriate progression template, filtered by allowed chords
+export function getRandomMoodProgression(mood: Mood, length: number, allowedChords?: string[]): string[] {
+  const templates = MOOD_TEMPLATES[mood] || MOOD_TEMPLATES.uplifting;
+
+  // Filter templates to only contain allowed chords
+  const filtered = allowedChords
+    ? templates.filter((t) => t.every((chord) => allowedChords.includes(chord)))
+    : templates;
+
+  if (filtered.length === 0) {
+    // Fallback: build from allowed chords
+    const pool = allowedChords || CHORD_POOL;
+    const prog: string[] = [];
+    for (let i = 0; i < length; i++) {
+      prog.push(pool[Math.floor(Math.random() * pool.length)]);
+    }
+    return prog;
+  }
+
+  const template = filtered[Math.floor(Math.random() * filtered.length)];
+
+  // Extend or trim to requested length
+  const prog = [...template];
+  while (prog.length < length) {
+    prog.push(template[prog.length % template.length]);
+  }
+  return prog.slice(0, length);
+}
+
 // Generate 12-bar blues progression
 export function generate12BarBlues(): string[] {
   // Classic E blues with B7

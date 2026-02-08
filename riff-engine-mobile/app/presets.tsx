@@ -98,14 +98,16 @@ interface KnobIndicatorProps {
 }
 
 function KnobIndicator({ label, value }: KnobIndicatorProps) {
+  // Map 1-5 scale to 1-3 dots
+  const mapped = value <= 2 ? 1 : value <= 3 ? 2 : 3;
   return (
     <View style={styles.knobIndicator}>
       <Text style={styles.knobLabel}>{label}</Text>
       <View style={styles.knobDots}>
-        {[1, 2, 3, 4, 5].map((i) => (
+        {[1, 2, 3].map((i) => (
           <View
             key={i}
-            style={[styles.knobDot, i <= value && styles.knobDotActive]}
+            style={[styles.knobDot, i <= mapped && styles.knobDotActive]}
           />
         ))}
       </View>
@@ -123,7 +125,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   subtitle: {
     color: colors.textMuted,
@@ -133,6 +135,8 @@ const styles = StyleSheet.create({
   },
   presetCard: {
     marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   presetCardSelected: {
     borderColor: colors.accent,
@@ -146,7 +150,7 @@ const styles = StyleSheet.create({
   },
   presetName: {
     fontSize: typography.h3.fontSize,
-    fontWeight: '800',
+    fontWeight: '600',
     color: colors.textPrimary,
   },
   activeBadge: {
@@ -162,8 +166,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   presetDetails: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+    flexDirection: 'column',
+    gap: spacing.xs,
     marginBottom: spacing.md,
   },
   detailChip: {
@@ -182,7 +186,7 @@ const styles = StyleSheet.create({
   detailValue: {
     color: colors.textPrimary,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   knobsRow: {
     flexDirection: 'row',
@@ -202,9 +206,9 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   knobDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.chipInactive,
   },
   knobDotActive: {

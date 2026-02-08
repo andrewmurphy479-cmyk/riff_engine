@@ -27,7 +27,7 @@ const LAYER_ORDER: RiffLayer[] = ['melody', 'bass', 'fills'];
 
 export function LayerBuilder() {
   const {
-    isLayeredMode,
+    generationMode,
     layers,
     progression,
     startLayeredGeneration,
@@ -39,7 +39,7 @@ export function LayerBuilder() {
     toggleLayerLock,
   } = useRiffStore();
 
-  if (!isLayeredMode) return null;
+  if (generationMode !== 'layerBuilder') return null;
 
   const currentLayer = layers.currentLayer;
   const currentInfo = LAYER_INFO[currentLayer];
@@ -68,7 +68,7 @@ export function LayerBuilder() {
         </View>
 
         <TouchableOpacity style={styles.startButton} onPress={startLayeredGeneration}>
-          <Text style={styles.startButtonText}>Start Building</Text>
+          <Text style={styles.startButtonText}>Begin Riff</Text>
         </TouchableOpacity>
       </View>
     );
@@ -233,14 +233,14 @@ export function LayerBuilder() {
           style={styles.regenerateButton}
           onPress={regenerateCurrentLayer}
         >
-          <Text style={styles.regenerateText}>🔄 Regenerate</Text>
+          <Text style={styles.regenerateText}>🔄 Try Another</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.approveButton}
           onPress={approveCurrentLayer}
         >
-          <Text style={styles.approveText}>✓ Approve & Continue</Text>
+          <Text style={styles.approveText}>✓ Commit Layer</Text>
         </TouchableOpacity>
       </View>
 
@@ -353,10 +353,7 @@ const styles = StyleSheet.create({
   },
   currentLayer: {
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
+    paddingVertical: spacing.lg,
     marginBottom: spacing.md,
   },
   currentIcon: {
@@ -457,16 +454,13 @@ const styles = StyleSheet.create({
   },
   mixerButton: {
     flex: 1,
-    backgroundColor: colors.success + '30',
+    backgroundColor: colors.success + '20',
     borderRadius: 8,
     padding: spacing.sm,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.success,
   },
   mixerButtonMuted: {
     backgroundColor: colors.border,
-    borderColor: colors.border,
     opacity: 0.6,
   },
   mixerIcon: {
@@ -490,12 +484,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: spacing.sm,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   lockButtonActive: {
-    backgroundColor: colors.accent + '30',
-    borderColor: colors.accent,
+    backgroundColor: colors.accent + '20',
   },
   lockIcon: {
     fontSize: 16,

@@ -67,17 +67,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
     backgroundColor: colors.chipInactive,
-    borderWidth: 1,
-    borderColor: colors.chipInactiveBorder,
   },
   chipSelected: {
     backgroundColor: colors.chipActive,
-    borderColor: colors.chipActiveBorder,
   },
   chipText: {
     color: colors.textSecondary,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   chipTextSelected: {
     color: colors.accent,

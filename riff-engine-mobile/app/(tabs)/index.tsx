@@ -4,26 +4,25 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   SafeAreaView,
+  TouchableOpacity,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { MoodSelector } from '../components/MoodSelector';
-import { StyleSelector } from '../components/StyleSelector';
-import { DifficultySelector } from '../components/DifficultySelector';
-import { KnobPanel } from '../components/KnobPanel';
-import { TabDisplay } from '../components/TabDisplay';
-import { PlaybackControls } from '../components/PlaybackControls';
-import { ExportModal } from '../components/ExportModal';
-import { LayerBuilder } from '../components/LayerBuilder';
-import { ModeSelector } from '../components/ModeSelector';
-import { useAudioEngine } from '../audio/AudioEngine';
-import { useRiffStore } from '../store/useRiffStore';
-import { getAllowedStylesForDifficulty } from '../engine/difficulty';
-import { colors, spacing, typography } from '../theme/colors';
+import { MoodSelector } from '../../components/MoodSelector';
+import { StyleSelector } from '../../components/StyleSelector';
+import { DifficultySelector } from '../../components/DifficultySelector';
+import { KnobPanel } from '../../components/KnobPanel';
+import { TabDisplay } from '../../components/TabDisplay';
+import { PlaybackControls } from '../../components/PlaybackControls';
+import { ExportModal } from '../../components/ExportModal';
+import { LayerBuilder } from '../../components/LayerBuilder';
+import { ChordArmory } from '../../components/ChordArmory';
+import { ModeSelector } from '../../components/ModeSelector';
+import { useAudioEngine } from '../../audio/AudioEngine';
+import { useRiffStore } from '../../store/useRiffStore';
+import { getAllowedStylesForDifficulty } from '../../engine/difficulty';
+import { colors, spacing, borderRadius } from '../../theme/colors';
 
 export default function HomeScreen() {
-  const router = useRouter();
   const isAutoRegeneratingRef = useRef(false);
   const handlePlayRef = useRef<() => void>(() => {});
   const stoppingRef = useRef(false);
@@ -42,9 +41,10 @@ export default function HomeScreen() {
     currentRiff,
     playbackState,
     isLooping,
-    isLayeredMode,
+    generationMode,
     progression,
     layers,
+    customProgression,
     setMood,
     setStyle,
     setDifficulty,
@@ -54,7 +54,12 @@ export default function HomeScreen() {
     getCurrentLayerEvents,
     getAllLayerEvents,
     getPlayableLayerEvents,
+    openChordArmory,
   } = useRiffStore();
+
+  const isLayeredMode = generationMode === 'layerBuilder';
+  const isCustomChords = generationMode === 'customChords';
+  const isQuickRiff = generationMode === 'quickRiff';
 
   // Keep a ref to isLooping so the onPlaybackEnd callback always sees current value
   const isLoopingRef = useRef(isLooping);
@@ -77,49 +82,52 @@ export default function HomeScreen() {
 
   // Generate riff when entering Quick Riff mode (or on mount if already in it)
   useEffect(() => {
-    if (!isLayeredMode) {
+    if (isQuickRiff) {
       generateNewRiff();
     }
-  }, [isLayeredMode]);
+  }, [isQuickRiff]);
 
-  // Auto-regenerate on parameter changes (with debounce) - only in non-layered mode
+  // Auto-generate in customChords mode when progression changes
+  useEffect(() => {
+    if (isCustomChords && customProgression && customProgression.length > 0) {
+      generateNewRiff();
+    }
+  }, [isCustomChords, customProgression]);
+
+  // Auto-regenerate on parameter changes (with debounce) - only in quickRiff or customChords mode
   useEffect(() => {
     if (!currentRiff) return;
     if (isAutoRegeneratingRef.current) return;
-    if (isLayeredMode) return; // Don't auto-regenerate in layered mode
+    if (isLayeredMode) return;
 
     isAutoRegeneratingRef.current = true;
 
     const timeoutId = setTimeout(() => {
-      // Stop current playback if playing
       if (playbackState === 'playing') {
         audioEngine.stop();
       }
       generateNewRiff();
       isAutoRegeneratingRef.current = false;
-    }, 300); // 300ms debounce for sliders
+    }, 300);
 
     return () => {
       clearTimeout(timeoutId);
       isAutoRegeneratingRef.current = false;
     };
-  }, [mood, style, tempo, bassMovement, bluesyFeel, complexity, energy, numBars, difficulty, isLayeredMode]);
+  }, [mood, style, tempo, bassMovement, bluesyFeel, complexity, energy, numBars, difficulty, generationMode]);
 
   const handlePlay = useCallback(() => {
     if (isLayeredMode && progression) {
-      // Check if all layers are complete
       const allComplete = layers.isLayerApproved.melody &&
                           layers.isLayerApproved.bass &&
                           layers.isLayerApproved.fills;
 
       if (allComplete) {
-        // Play with mute states respected
         const events = getPlayableLayerEvents();
         if (events.length > 0) {
           audioEngine.play(events, tempo);
         }
       } else {
-        // Play current layer with approved layers for preview
         const events = getCurrentLayerEvents();
         if (events.length > 0) {
           audioEngine.play(events, tempo);
@@ -139,7 +147,6 @@ export default function HomeScreen() {
   }, [audioEngine]);
 
   const handleNewRiff = useCallback(() => {
-    // Stop current playback if playing
     if (playbackState === 'playing') {
       handleStop();
     }
@@ -147,34 +154,19 @@ export default function HomeScreen() {
   }, [playbackState, handleStop, generateNewRiff]);
 
   const handleExport = useCallback(() => {
-    // Stop playback before export
     if (playbackState === 'playing') {
       handleStop();
     }
     setShowExportModal(true);
   }, [playbackState, handleStop]);
 
-  const openPresets = useCallback(() => {
-    router.push('/presets');
-  }, [router]);
-
   // Get allowed styles for current difficulty
   const allowedStyles = getAllowedStylesForDifficulty(difficulty);
 
+  const hasCustomProgression = customProgression && customProgression.length > 0;
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Riff Engine</Text>
-        <TouchableOpacity
-          style={styles.presetsButton}
-          onPress={openPresets}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.presetsButtonText}>Presets</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Content */}
       <ScrollView
         style={styles.scrollView}
@@ -199,6 +191,21 @@ export default function HomeScreen() {
 
         {/* Customization Panel */}
         <KnobPanel />
+
+        {/* Custom Chords mode: Edit Chords button */}
+        {isCustomChords && (
+          <TouchableOpacity
+            style={styles.editChordsButton}
+            onPress={openChordArmory}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.editChordsText}>
+              {hasCustomProgression
+                ? `Edit Chords (${customProgression!.join(' > ')})`
+                : 'Choose Your Chords'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Layer Builder (only in layered mode) */}
         {isLayeredMode && <LayerBuilder />}
@@ -233,6 +240,9 @@ export default function HomeScreen() {
         isLayeredMode={isLayeredMode}
       />
 
+      {/* Chord Armory Modal */}
+      <ChordArmory />
+
       {/* Export Modal */}
       <ExportModal
         visible={showExportModal}
@@ -248,33 +258,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-  },
-  title: {
-    fontSize: typography.h2.fontSize,
-    fontWeight: '900',
-    color: colors.textPrimary,
-  },
-  presetsButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  presetsButtonText: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: '700',
   },
   scrollView: {
     flex: 1,
@@ -296,11 +279,27 @@ const styles = StyleSheet.create({
   infoText: {
     color: colors.textSecondary,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   tempoText: {
     color: colors.accent,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
+  },
+  editChordsButton: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.accent + '40',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+  },
+  editChordsText: {
+    color: colors.accent,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

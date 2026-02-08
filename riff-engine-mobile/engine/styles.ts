@@ -221,7 +221,7 @@ export function getActiveMotif(): Motif | null {
 }
 
 // Apply ornaments (hammer-ons, pull-offs) to events based on complexity
-// This proactively INSERTS ornament notes rather than just marking existing ones
+// Only processes notes tagged as embellishable by the blueprint system
 export function applyOrnaments(events: TabEvent[], config: BarConfig): void {
   if (config.complexity < 3) return; // No ornaments for simpler playing
   if (config.ornamentProbMult <= 0) return; // Difficulty disables ornaments
@@ -231,10 +231,12 @@ export function applyOrnaments(events: TabEvent[], config: BarConfig): void {
   const maxOrnaments = config.complexity - 1; // 2-4 ornaments per bar max
 
   // Find treble notes that could receive ornaments
+  // Only consider embellishable notes (tagged by blueprint resolver)
   const trebleEvents = events.filter(e =>
     ['G', 'B', 'e'].includes(e.string) &&
     e.fret > 0 && // Need a fret to hammer onto or pull from
-    e.fret <= 5   // Keep in open position area
+    e.fret <= 5 &&  // Keep in open position area
+    (e as any)._embellishable === true  // Blueprint must allow it
   );
 
   // Track which steps are used to avoid collisions
@@ -722,6 +724,7 @@ export function barStrum(chord: string, config: BarConfig): TabEvent[] {
 }
 
 // Improved bass walk that connects chords smoothly
+// Blueprint-aware: caller should check for late-bar bass conflicts before calling
 export function applyBassWalk(
   events: TabEvent[],
   used: UsedSlots,

@@ -1,8 +1,21 @@
+import { useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../theme/colors';
+import RiffologyLoadingScreen from '../components/RiffologyLoadingScreen';
 
 export default function RootLayout() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  if (isLoading) {
+    return (
+      <>
+        <StatusBar style="light" />
+        <RiffologyLoadingScreen onFinish={() => setIsLoading(false)} />
+      </>
+    );
+  }
+
   return (
     <>
       <StatusBar style="light" />
@@ -13,7 +26,7 @@ export default function RootLayout() {
           },
           headerTintColor: colors.textPrimary,
           headerTitleStyle: {
-            fontWeight: '800',
+            fontWeight: '600',
           },
           contentStyle: {
             backgroundColor: colors.background,
@@ -22,11 +35,8 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen
-          name="index"
-          options={{
-            title: 'Riff Engine',
-            headerRight: () => null,
-          }}
+          name="(tabs)"
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="presets"

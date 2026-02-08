@@ -92,6 +92,9 @@ export interface GeneratedRiff {
 // Playback state
 export type PlaybackState = 'stopped' | 'playing' | 'paused';
 
+// Generation mode
+export type GenerationMode = 'quickRiff' | 'layerBuilder' | 'customChords';
+
 // Layer types for layered generation
 export type RiffLayer = 'melody' | 'bass' | 'fills';
 

@@ -67,7 +67,7 @@ export function PlaybackControls({
         activeOpacity={0.7}
       >
         <Text style={styles.newRiffIcon}>⟳</Text>
-        <Text style={styles.newRiffText}>Generate New Riff</Text>
+        <Text style={styles.newRiffText}>New Riff</Text>
       </TouchableOpacity>
     </View>
   );
@@ -79,8 +79,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
     backgroundColor: colors.backgroundSecondary,
-    borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
   },
   topRow: {
     flexDirection: 'row',
@@ -106,7 +104,7 @@ const styles = StyleSheet.create({
   playText: {
     color: colors.white,
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   loopButton: {
     width: 56,
@@ -115,8 +113,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   loopButtonActive: {
     backgroundColor: colors.chipActive,
@@ -125,7 +121,7 @@ const styles = StyleSheet.create({
   loopIcon: {
     color: colors.textSecondary,
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   loopIconActive: {
     color: colors.accent,
@@ -139,18 +135,16 @@ const styles = StyleSheet.create({
     height: 56,
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   exportIcon: {
     color: colors.accent,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   exportText: {
     color: colors.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   newRiffButton: {
     flexDirection: 'row',
@@ -160,8 +154,6 @@ const styles = StyleSheet.create({
     height: 48,
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   newRiffIcon: {
     color: colors.textPrimary,
@@ -170,6 +162,6 @@ const styles = StyleSheet.create({
   newRiffText: {
     color: colors.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 });

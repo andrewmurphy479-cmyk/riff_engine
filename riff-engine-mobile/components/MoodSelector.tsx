@@ -36,7 +36,7 @@ export function MoodSelector({ selected, onSelect }: MoodSelectorProps) {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   label: {
     color: colors.textMuted,

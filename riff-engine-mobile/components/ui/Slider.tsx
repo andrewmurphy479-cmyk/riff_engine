@@ -35,9 +35,9 @@ export function Slider({
         minimumValue={minimumValue}
         maximumValue={maximumValue}
         step={step}
-        minimumTrackTintColor={colors.accent}
+        minimumTrackTintColor="rgba(74, 122, 255, 0.5)"
         maximumTrackTintColor={colors.card}
-        thumbTintColor={colors.accent}
+        thumbTintColor={colors.textSecondary}
       />
     </View>
   );
@@ -56,12 +56,12 @@ const styles = StyleSheet.create({
   label: {
     color: colors.textSecondary,
     fontSize: typography.caption.fontSize,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   value: {
     color: colors.textMuted,
     fontSize: typography.small.fontSize,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   slider: {
     height: 40,

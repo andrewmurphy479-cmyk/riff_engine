@@ -1,13 +1,15 @@
 import { TabEvent, GeneratorConfig, GeneratedRiff, Mood, Style } from './types';
 import { generateProgression } from './progressions';
-import { STYLE_FUNCTIONS, applyBassWalk, applyFill, applyOrnaments, resetVoiceLeading, initializeMotif, assignVelocityToEvents, BarConfig } from './styles';
-import { GuitarString } from './types';
+import { applyBassWalk, applyOrnaments, assignVelocityToEvents, BarConfig } from './styles';
+import { GuitarString, NotePosition } from './types';
 import {
   getDifficultyConfig,
   clampTempoForDifficulty,
   clampComplexityForDifficulty,
   getAllowedChordsForDifficulty,
 } from './difficulty';
+import { selectBlueprint, varyBlueprint } from './blueprints';
+import { resolveBlueprint } from './blueprintResolver';
 
 // Mood configurations for tempo ranges
 const MOOD_TEMPO: Record<Mood, [number, number]> = {
@@ -52,58 +54,68 @@ function buildBarConfig(config: GeneratorConfig, barPosition: number = 0, totalB
   };
 }
 
-// Generate events for a full progression
+// Generate events for a full progression using blueprint system
 function generateEventsForProgression(
   progression: string[],
   style: Style,
   config: GeneratorConfig
 ): TabEvent[] {
-  const barFn = STYLE_FUNCTIONS[style];
   const outEvents: TabEvent[] = [];
 
-  // Reset voice leading and initialize new motif/phrase for this riff
-  resetVoiceLeading();
-  initializeMotif(config.complexity, config.mood);
+  // Select ONE blueprint for the entire riff — this is the riff's identity
+  const blueprint = selectBlueprint(style, {
+    energy: config.energy,
+    complexity: config.complexity,
+    mood: config.mood,
+  });
+
+  let lastNote: NotePosition | null = null;
 
   for (let barIndex = 0; barIndex < progression.length; barIndex++) {
     const chord = progression[barIndex];
     const nextChord = progression[(barIndex + 1) % progression.length];
-    // Build config with bar position for dynamic contrast
+    const prevChord = barIndex > 0 ? progression[barIndex - 1] : progression[progression.length - 1];
     const barConfig = buildBarConfig(config, barIndex, progression.length);
-    const barEvents = barFn(chord, barConfig);
+    const offset = barIndex * 16;
 
-    // Track used slots for fills/bass-walks
+    // Vary the blueprint based on bar position (same pattern with slight development)
+    const variedBP = varyBlueprint(blueprint, barIndex, progression.length);
+
+    // Resolve blueprint to concrete TabEvents
+    const result = resolveBlueprint(
+      variedBP,
+      chord,
+      barIndex,
+      offset,
+      barConfig,
+      lastNote,
+      nextChord
+    );
+
+    const barEvents = result.events;
+    lastNote = result.lastNote;
+
+    // Track used slots for bass walks
     const used = new Set<string>();
     for (const ev of barEvents) {
       used.add(`${ev.string}:${ev.step}`);
     }
 
-    const prevChord = barIndex > 0 ? progression[barIndex - 1] : progression[progression.length - 1];
+    // Apply bass walk only if blueprint doesn't have bass notes at steps 13-15
+    const blueprintHasLateBass = variedBP.notes.some(
+      n => n.register === 'bass' && n.step >= 13
+    );
+    if (!blueprintHasLateBass) {
+      applyBassWalk(barEvents, used, prevChord, chord, barConfig);
+    }
 
-    // Apply bass walk (leads INTO this bar from previous)
-    applyBassWalk(barEvents, used, prevChord, chord, barConfig);
-
-    // Apply fills (leads OUT of this bar to next) - now with next chord awareness
-    applyFill(barEvents, used, chord, barConfig, nextChord);
-
-    // Apply ornaments (hammer-ons, pull-offs) for higher complexity
+    // Apply ornaments only on embellishable notes
     applyOrnaments(barEvents, barConfig);
 
     // Assign velocity dynamics
     assignVelocityToEvents(barEvents, barConfig);
 
-    // Offset events to correct bar position
-    const offset = barIndex * 16;
-    for (const ev of barEvents) {
-      outEvents.push({
-        string: ev.string,
-        fret: ev.fret,
-        step: ev.step + offset,
-        duration: ev.duration,
-        technique: ev.technique, // Preserve ornament markers
-        velocity: ev.velocity,   // Preserve velocity dynamics
-      });
-    }
+    outEvents.push(...barEvents);
   }
 
   // Apply swing feel based on mood (respect difficulty allowSwing)
@@ -168,7 +180,7 @@ function applySwing(events: TabEvent[], mood: Mood, bluesyFeel: number, allowSwi
 }
 
 // Main generator function
-export function generateRiff(config: GeneratorConfig): GeneratedRiff {
+export function generateRiff(config: GeneratorConfig, customProgression?: string[]): GeneratedRiff {
   // Apply difficulty constraints if specified
   let effectiveConfig = { ...config };
   let allowedChords: string[] | undefined;
@@ -185,14 +197,16 @@ export function generateRiff(config: GeneratorConfig): GeneratedRiff {
     ? effectiveConfig.tempo
     : getTempoForMood(effectiveConfig.mood);
 
-  // Generate progression
-  const progression = generateProgression(
-    effectiveConfig.mood,
-    effectiveConfig.numBars ?? 4,
-    effectiveConfig.bluesyFeel,
-    effectiveConfig.energy,
-    allowedChords
-  );
+  // Use custom progression if provided, otherwise generate
+  const progression = customProgression && customProgression.length > 0
+    ? [...customProgression]
+    : generateProgression(
+        effectiveConfig.mood,
+        effectiveConfig.numBars ?? 4,
+        effectiveConfig.bluesyFeel,
+        effectiveConfig.energy,
+        allowedChords
+      );
 
   // Generate events
   const events = generateEventsForProgression(

@@ -20,8 +20,6 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
     padding: spacing.lg,
   },
   noPadding: {

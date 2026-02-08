@@ -84,8 +84,6 @@ const styles = StyleSheet.create({
   secondary: {
     backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
   ghost: {
     backgroundColor: colors.transparent,
@@ -106,7 +104,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   text: {
-    fontWeight: '800',
+    fontWeight: '600',
   },
   primaryText: {
     color: colors.white,

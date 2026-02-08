@@ -31,7 +31,7 @@ export function DifficultySelector({ selected, onSelect }: DifficultySelectorPro
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   label: {
     color: colors.textMuted,

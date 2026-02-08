@@ -25,9 +25,9 @@ export const TECHNIQUE_SYMBOLS: Record<string, string> = {
 
 // Layer colors for visual distinction
 export const LAYER_COLORS: Record<RiffLayer, string> = {
-  melody: '#4ECDC4',  // Teal for melody
-  bass: '#FFE66D',    // Yellow for bass
-  fills: '#FF6B6B',   // Coral for fills
+  melody: '#5AAFA8',  // Desaturated teal for melody
+  bass: '#C8B95A',    // Desaturated yellow for bass
+  fills: '#C47070',   // Desaturated coral for fills
 };
 
 // Grid cell with fret, technique, and layer info
@@ -257,8 +257,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: colors.card,
     borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
     padding: 2,
   },
   switchSegment: {
@@ -273,7 +271,7 @@ const styles = StyleSheet.create({
   },
   switchText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.textMuted,
   },
   switchTextActive: {
@@ -315,8 +313,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     gap: spacing.md,
   },
   legendItem: {
