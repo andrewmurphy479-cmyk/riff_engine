@@ -28,19 +28,23 @@ const STRING_TO_INDEX: Record<GuitarString, number> = {
 // Cache for generated tone files
 const toneCache: Map<string, string> = new Map();
 
-/** Quantize velocity to layer for cache bucketing */
+/** Quantize velocity to layer for cache bucketing (5 layers for finer tonal variation) */
 function velocityToLayer(velocity: number): VelocityLayer {
-  if (velocity < 0.33) return 'soft';
-  if (velocity < 0.66) return 'medium';
-  return 'hard';
+  if (velocity < 0.2) return 'pp';
+  if (velocity < 0.4) return 'p';
+  if (velocity < 0.6) return 'mf';
+  if (velocity < 0.8) return 'f';
+  return 'ff';
 }
 
 /** Representative velocity value per layer */
 function layerToVelocity(layer: VelocityLayer): number {
   switch (layer) {
-    case 'soft': return 0.2;
-    case 'medium': return 0.5;
-    case 'hard': return 0.85;
+    case 'pp': return 0.1;
+    case 'p': return 0.3;
+    case 'mf': return 0.5;
+    case 'f': return 0.7;
+    case 'ff': return 0.9;
   }
 }
 
@@ -79,7 +83,8 @@ class SamplePlayerImpl {
     fret: number,
     velocity: number = 0.7,
     durationMs: number = 500,
-    technique?: Technique
+    technique?: Technique,
+    playbackVolume?: number
   ): Promise<void> {
     if (!this.isInitialized) {
       await this.initialize();
@@ -92,7 +97,7 @@ class SamplePlayerImpl {
     await this.stopString(stringIndex);
 
     // Generate and play synthesized tone
-    await this.playSynthNote(midiNote, stringIndex, velocity, durationMs, technique, guitarString);
+    await this.playSynthNote(midiNote, stringIndex, velocity, durationMs, technique, guitarString, playbackVolume);
   }
 
   private async playSynthNote(
@@ -101,16 +106,19 @@ class SamplePlayerImpl {
     volume: number,
     durationMs: number,
     technique: Technique | undefined,
-    guitarString: GuitarString
+    guitarString: GuitarString,
+    playbackVolume?: number
   ): Promise<void> {
     try {
+      // volume controls tone generation (timbre); playbackVolume controls loudness
       const toneUri = await this.getOrCreateTone(midiNote, durationMs, volume, technique, guitarString);
+      const effectiveVolume = playbackVolume ?? volume;
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: toneUri },
         {
           shouldPlay: true,
-          volume: Math.min(1, volume),
+          volume: Math.min(1, effectiveVolume),
           isLooping: false,
         }
       );
@@ -231,6 +239,9 @@ class SamplePlayerImpl {
 
     if (pooled.sound) {
       try {
+        // Fade out over ~15ms to avoid audible clicks on note stops
+        await pooled.sound.setVolumeAsync(0);
+        await new Promise(resolve => setTimeout(resolve, 15));
         await pooled.sound.stopAsync();
         await pooled.sound.unloadAsync();
       } catch (e) {

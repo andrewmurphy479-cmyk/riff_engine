@@ -46,11 +46,11 @@ function velocityParams(velocity: number) {
   const v = Math.max(0, Math.min(1, velocity));
 
   return {
-    pluckPosition: 0.08 + v * 0.12,
-    toneOffset: (v - 0.5) * 0.4,
-    noiseAmount: 0.2 + v * 0.4,
-    amplitude: 0.4 + v * 0.6,
-    transientLevel: v * 0.8,
+    pluckPosition: 0.05 + v * 0.20,     // Wider range: bridge (bright) to neck (warm)
+    toneOffset: (v - 0.5) * 0.7,        // More tonal contrast between soft/hard
+    noiseAmount: 0.1 + v * 0.6,         // Soft = clean, hard = noisy
+    amplitude: 0.3 + v * 0.7,           // More dynamic range
+    transientLevel: v * 0.9,            // Stronger pick attack at high velocity
   };
 }
 
@@ -122,8 +122,20 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
   const vp = velocityParams(velocity);
   const tp = techniqueParams(technique);
 
-  // --- Karplus-Strong delay line ---
-  const periodLength = Math.round(SAMPLE_RATE / frequency);
+  // Classify by actual guitar string when available, not just MIDI pitch
+  const isBassString = guitarString
+    ? (['E', 'A', 'D'] as string[]).includes(guitarString)
+    : midiNote < 52;
+  const isTrebleString = guitarString
+    ? (['G', 'B', 'e'] as string[]).includes(guitarString)
+    : midiNote > 59;
+
+  // --- Karplus-Strong delay line with fractional delay for pitch accuracy ---
+  const exactPeriod = SAMPLE_RATE / frequency;
+  const periodLength = Math.floor(exactPeriod);
+  const fracDelay = exactPeriod - periodLength;
+  // First-order allpass coefficient for fractional delay compensation
+  const fracCoeff = (1 - fracDelay) / (1 + fracDelay);
   const wavetable = new Float32Array(periodLength);
 
   const pluckWidth = Math.max(2, Math.floor(periodLength * vp.pluckPosition));
@@ -148,20 +160,20 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     wavetable[i] = excitation;
   }
 
-  // Pre-filter the excitation for warmth
-  for (let pass = 0; pass < 2; pass++) {
+  // Frequency-aware excitation pre-filtering
+  // Bass strings get more smoothing (warmer), treble strings get less (preserves clarity)
+  const filterPasses = isBassString ? 3 : (isTrebleString ? 1 : 2);
+  const filterCoeff = isBassString ? 0.35 : (isTrebleString ? 0.2 : 0.3);
+  for (let pass = 0; pass < filterPasses; pass++) {
     let prev = wavetable[0];
     for (let i = 1; i < periodLength; i++) {
-      wavetable[i] = prev * 0.3 + wavetable[i] * 0.7;
+      wavetable[i] = prev * filterCoeff + wavetable[i] * (1 - filterCoeff);
       prev = wavetable[i];
     }
   }
 
   // --- Generate mono PCM using extended Karplus-Strong ---
   const mono = new Float32Array(numSamples);
-
-  const isBassString = midiNote < 52;
-  const isTrebleString = midiNote > 59;
 
   const baseDamping = isBassString ? 0.998 : (isTrebleString ? 0.994 : 0.996);
   const freqFactor = Math.min(1, 150 / frequency);
@@ -174,6 +186,8 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
 
   let lpState = 0;
   let apState = 0;
+  let fracPrevIn = 0;
+  let fracPrevOut = 0;
 
   // --- Pick transient (scaled by technique) ---
   const effectiveTransient = vp.transientLevel * tp.transientScale;
@@ -183,13 +197,19 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
 
   if (effectiveTransient > 0.05) {
     let hpPrev = 0;
+    let lpPrev2 = 0;
     for (let i = 0; i < transientSamples; i++) {
       const noise = (Math.random() * 2 - 1);
-      const lpFiltered = hpPrev * 0.7 + noise * 0.3;
+      // Band-pass: HP to remove lows, then LP to remove harsh highs
+      const lpFiltered = hpPrev * 0.65 + noise * 0.35;
       hpPrev = lpFiltered;
       const hpFiltered = noise - lpFiltered;
-      const env = Math.sin((i / transientSamples) * Math.PI);
-      transientBuffer[i] = hpFiltered * env * effectiveTransient * 0.3;
+      // Gentle LP to tame extreme highs
+      lpPrev2 = lpPrev2 * 0.3 + hpFiltered * 0.7;
+      // Raised cosine envelope (smoother than sine)
+      const phase = i / transientSamples;
+      const env = 0.5 * (1 - Math.cos(2 * Math.PI * phase));
+      transientBuffer[i] = lpPrev2 * env * effectiveTransient * 0.2;
     }
   }
 
@@ -222,20 +242,31 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     lpState = lpState * (1 - toneFilter) + filtered * toneFilter;
     filtered = lpState;
 
+    // Allpass dispersion — gradual ramp-in for smooth attack (no discontinuity)
+    const apRamp = Math.min(1, i / (SAMPLE_RATE * 0.003));
     const apCoeff = 0.5 - stiffness * (i / numSamples);
     const apOut = apCoeff * (filtered - apState) + wavetable[tableIndex];
     apState = apOut;
-    filtered = filtered * 0.7 + apOut * 0.3;
+    const apBlend = 0.15 * apRamp;
+    filtered = filtered * (1 - apBlend) + apOut * apBlend;
+
+    // Fractional delay allpass — corrects pitch to exact frequency
+    const fracOut = fracCoeff * (filtered - fracPrevOut) + fracPrevIn;
+    fracPrevIn = filtered;
+    fracPrevOut = fracOut;
+    filtered = fracOut;
 
     wavetable[tableIndex] = filtered;
 
-    // Body resonance (6-mode)
+    // Body resonance (6-mode) — scaled inversely with pitch
+    // Bass strings need less body resonance (avoids mud), treble gets more (adds fullness)
     const t = i / SAMPLE_RATE;
     let bodyRes = 0;
+    const bodyScale = isBassString ? 0.4 : (isTrebleString ? 1.2 : 0.8);
     for (let b = 0; b < BODY_MODES.length; b++) {
       const mode = BODY_MODES[b];
       bodyRes += Math.sin(2 * Math.PI * mode.freq * t + mode.phase) *
-                 mode.amp * Math.exp(-mode.decay * t);
+                 mode.amp * Math.exp(-mode.decay * t) * bodyScale;
     }
 
     let sample = filtered * 0.85 + bodyRes;
@@ -250,8 +281,8 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
       sample += slideNoise[i];
     }
 
-    // Very gentle saturation — just catches peaks, keeps clean acoustic tone
-    sample = Math.abs(sample) > 0.8 ? Math.tanh(sample) : sample * 0.95;
+    // Smooth tanh saturation — no branching, no discontinuities
+    sample = Math.tanh(sample * 1.2) * 0.83;
 
     // Quick attack envelope
     const envelope = Math.min(1, 1 - Math.exp(-i / (SAMPLE_RATE * 0.002)));
@@ -260,13 +291,35 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     mono[i] = sample * vp.amplitude;
   }
 
-  // High-frequency roll-off
-  let hpPrev = 0;
+  // DC blocker (removes sub-bass rumble <30Hz without killing clarity)
+  let dcPrev = 0;
+  let dcOut = 0;
+  const dcCoeff = 0.997; // ~30Hz cutoff at 44100 SR
   for (let i = 0; i < numSamples; i++) {
-    const current = mono[i];
-    const filtered = hpPrev * 0.15 + current * 0.85;
-    hpPrev = filtered;
-    mono[i] = filtered;
+    dcOut = mono[i] - dcPrev + dcCoeff * dcOut;
+    dcPrev = mono[i];
+    mono[i] = dcOut;
+  }
+
+  // Gentle presence shelf (~2-5kHz boost for clarity)
+  let presLP = 0;
+  const presFreq = 3500;
+  const presCoeff = 1 - Math.exp(-2 * Math.PI * presFreq / SAMPLE_RATE);
+  const presAmount = isTrebleString ? 0.08 : (isBassString ? 0.03 : 0.05);
+  for (let i = 0; i < numSamples; i++) {
+    presLP += presCoeff * (mono[i] - presLP);
+    // Subtract LP to get HP (presence frequencies), add a fraction back
+    mono[i] += (mono[i] - presLP) * presAmount;
+  }
+
+  // Release fade — last 25ms cosine-tapers to silence so the WAV ends at zero,
+  // preventing the speaker-cone snap that causes an end-of-file crackle.
+  const fadeSamples = Math.min(numSamples, Math.floor(SAMPLE_RATE * 0.025));
+  const fadeStart = numSamples - fadeSamples;
+  for (let i = fadeStart; i < numSamples; i++) {
+    const phase = (i - fadeStart) / fadeSamples;
+    const gain = Math.cos(phase * Math.PI * 0.5);
+    mono[i] *= gain;
   }
 
   // --- Stereo panning ---
@@ -296,6 +349,25 @@ export function applyReverb(
 ): void {
   const len = left.length;
 
+  // High-pass filter reverb input at ~200Hz to keep bass dry and focused
+  const hpFreq = 200;
+  const hpCoeff = 1 - Math.exp(-2 * Math.PI * hpFreq / SAMPLE_RATE);
+  let hpLpL = 0, hpLpR = 0;
+  const reverbInputL = new Float32Array(len);
+  const reverbInputR = new Float32Array(len);
+
+  // 5ms pre-delay for transient clarity
+  const preDelaySamples = Math.floor(SAMPLE_RATE * 0.005);
+
+  for (let i = 0; i < len; i++) {
+    hpLpL += hpCoeff * (left[i] - hpLpL);
+    hpLpR += hpCoeff * (right[i] - hpLpR);
+    // HP = original - LP (removes bass from reverb send)
+    const srcIdx = Math.max(0, i - preDelaySamples);
+    reverbInputL[i] = left[srcIdx] - hpLpL;
+    reverbInputR[i] = right[srcIdx] - hpLpR;
+  }
+
   // Comb filter delays (in samples) — tuned to avoid metallic resonances
   const combDelays = [1557, 1617, 1491, 1422, 1277, 1356];
   const combFeedback = 0.78; // Controls reverb tail length (~0.8s RT60, intimate room)
@@ -304,9 +376,9 @@ export function applyReverb(
   const apDelays = [225, 556, 441];
   const apFeedback = 0.5;
 
-  // Process left and right with slightly different delays for width
-  const wetL = processReverbChannel(left, combDelays, combFeedback, apDelays, apFeedback);
-  const wetR = processReverbChannel(right,
+  // Process HP-filtered + pre-delayed input through reverb
+  const wetL = processReverbChannel(reverbInputL, combDelays, combFeedback, apDelays, apFeedback);
+  const wetR = processReverbChannel(reverbInputR,
     combDelays.map(d => d + 23), // Offset for stereo decorrelation
     combFeedback, apDelays.map(d => d + 13), apFeedback);
 
@@ -376,20 +448,42 @@ export function applyDynamics(
   right: Float32Array
 ): void {
   const len = left.length;
-  const threshold = 0.65;   // Only compress loud peaks
-  const ratio = 3;           // Gentle 3:1 compression
-  const attackMs = 10;       // Slower attack preserves transients
-  const releaseMs = 150;     // Smooth release
-  const makeupGain = 1.1;    // Minimal makeup — preserve dynamics
+  const threshold = 0.5;    // Lower threshold catches more peaks
+  const ratio = 4;           // Firmer 4:1 compression
+  const attackMs = 5;        // Faster attack for better peak control
+  const releaseMs = 100;     // Tighter release
+  const makeupGain = 1.15;   // Slight makeup to compensate
 
   const attackCoeff = 1 - Math.exp(-1 / (SAMPLE_RATE * attackMs / 1000));
   const releaseCoeff = 1 - Math.exp(-1 / (SAMPLE_RATE * releaseMs / 1000));
 
+  // 2ms lookahead (shift input for better transient handling)
+  const lookahead = Math.floor(SAMPLE_RATE * 0.002);
+
+  // Low-shelf cut: -2dB below 150Hz to prevent bass domination
+  const shelfFreq = 150;
+  const shelfCoeff = 1 - Math.exp(-2 * Math.PI * shelfFreq / SAMPLE_RATE);
+  const shelfCut = 0.79; // ~-2dB
+  let shelfLpL = 0, shelfLpR = 0;
+
+  // Apply low-shelf cut first
+  for (let i = 0; i < len; i++) {
+    shelfLpL += shelfCoeff * (left[i] - shelfLpL);
+    shelfLpR += shelfCoeff * (right[i] - shelfLpR);
+    // Reduce only the low-frequency content
+    left[i] = left[i] - shelfLpL * (1 - shelfCut);
+    right[i] = right[i] - shelfLpR * (1 - shelfCut);
+  }
+
   let envelope = 0;
 
   for (let i = 0; i < len; i++) {
-    // Detect peak level (linked stereo)
-    const peak = Math.max(Math.abs(left[i]), Math.abs(right[i]));
+    // Lookahead: peek ahead for better transient detection
+    const lookIdx = Math.min(i + lookahead, len - 1);
+    const peak = Math.max(
+      Math.abs(left[lookIdx]), Math.abs(right[lookIdx]),
+      Math.abs(left[i]), Math.abs(right[i])
+    );
 
     // Envelope follower
     if (peak > envelope) {

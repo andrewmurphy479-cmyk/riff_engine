@@ -1,12 +1,8 @@
-import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-import { colors, spacing } from '../../theme/colors';
+import { Tabs } from 'expo-router';
+import { colors } from '../../theme/colors';
 
 export default function TabsLayout() {
-  const router = useRouter();
-
   return (
     <Tabs
       screenOptions={{
@@ -35,14 +31,16 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="musical-notes" size={size} color={color} />
           ),
-          headerRight: () => (
-            <TouchableOpacity
-              style={styles.presetsButton}
-              onPress={() => router.push('/presets')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.presetsButtonText}>Presets</Text>
-            </TouchableOpacity>
+        }}
+      />
+      <Tabs.Screen
+        name="armory"
+        options={{
+          title: 'Chord Armory',
+          headerShown: false,
+          tabBarLabel: 'Armory',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="grid-outline" size={size} color={color} />
           ),
         }}
       />
@@ -56,21 +54,16 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="library"
+        options={{
+          title: 'Library',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="heart-outline" size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  presetsButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    marginRight: spacing.md,
-  },
-  presetsButtonText: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-});

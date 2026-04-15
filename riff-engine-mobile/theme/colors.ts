@@ -40,6 +40,48 @@ export const colors = {
   transparent: 'transparent',
 };
 
+export interface ChordColorSet {
+  bg: string;      // 12% opacity
+  border: string;  // 35% opacity
+  accent: string;  // full color
+  text: string;    // lighter tint
+}
+
+function makeChordColorSet(hex: string): ChordColorSet {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  // Lighter tint for text: blend 40% toward white
+  const tr = Math.round(r + (255 - r) * 0.4);
+  const tg = Math.round(g + (255 - g) * 0.4);
+  const tb = Math.round(b + (255 - b) * 0.4);
+  return {
+    bg: `rgba(${r}, ${g}, ${b}, 0.12)`,
+    border: `rgba(${r}, ${g}, ${b}, 0.35)`,
+    accent: hex,
+    text: `rgb(${tr}, ${tg}, ${tb})`,
+  };
+}
+
+export const chordAccentColors: Record<string, ChordColorSet> = {
+  Em: makeChordColorSet('#7B68EE'),  // slate blue
+  C:  makeChordColorSet('#C8B560'),  // warm gold
+  G:  makeChordColorSet('#4CAF50'),  // forest green
+  D:  makeChordColorSet('#FF7043'),  // sunset coral
+  Am: makeChordColorSet('#5C6BC0'),  // indigo
+  A:  makeChordColorSet('#FFB300'),  // amber
+  E:  makeChordColorSet('#E53935'),  // crimson
+  Dm: makeChordColorSet('#7E57C2'),  // deep purple
+  F:  makeChordColorSet('#26A69A'),  // teal
+  B7: makeChordColorSet('#FF8F00'),  // dark amber
+  A7: makeChordColorSet('#FF6D00'),  // vivid orange
+  E7: makeChordColorSet('#D32F2F'),  // deep red
+  D7: makeChordColorSet('#F4511E'),  // deep orange-red
+  G7: makeChordColorSet('#2E7D32'),  // dark green
+  Bm: makeChordColorSet('#6A1B9A'),  // deep violet
+  Cadd9: makeChordColorSet('#00ACC1'), // cyan
+};
+
 export const chordColors = {
   major: {
     bg: 'rgba(217, 170, 59, 0.12)',
@@ -62,6 +104,12 @@ export const chordColors = {
   selectedGlow: 'rgba(74, 122, 255, 0.4)',
   modalBackground: 'rgba(0, 0, 0, 0.92)',
 };
+
+export function getChordColors(chordId: string, quality?: 'major' | 'minor' | 'dom7'): ChordColorSet {
+  if (chordAccentColors[chordId]) return chordAccentColors[chordId];
+  if (quality) return chordColors[quality];
+  return chordColors.major;
+}
 
 export const spacing = {
   xs: 4,

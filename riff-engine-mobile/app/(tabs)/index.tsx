@@ -1,254 +1,78 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-} from 'react-native';
-import { MoodSelector } from '../../components/MoodSelector';
-import { StyleSelector } from '../../components/StyleSelector';
-import { DifficultySelector } from '../../components/DifficultySelector';
-import { KnobPanel } from '../../components/KnobPanel';
-import { TabDisplay } from '../../components/TabDisplay';
-import { PlaybackControls } from '../../components/PlaybackControls';
-import { ExportModal } from '../../components/ExportModal';
-import { LayerBuilder } from '../../components/LayerBuilder';
-import { ChordArmory } from '../../components/ChordArmory';
-import { ModeSelector } from '../../components/ModeSelector';
-import { useAudioEngine } from '../../audio/AudioEngine';
-import { useRiffStore } from '../../store/useRiffStore';
-import { getAllowedStylesForDifficulty } from '../../engine/difficulty';
-import { colors, spacing, borderRadius } from '../../theme/colors';
+  View,
+} from "react-native";
+import { FeelSelector } from "../../components/FeelSelector";
+import { RiffActionBar } from "../../components/RiffActionBar";
+import { RiffTabView } from "../../components/RiffTabView";
+import { useAudioEngine } from "../../audio/AudioEngine";
+import { useNewRiffStore } from "../../store/useNewRiffStore";
+import { riffSpecToEvents } from "../../engine/riff/toEvents";
+import { colors, spacing } from "../../theme/colors";
 
 export default function HomeScreen() {
-  const isAutoRegeneratingRef = useRef(false);
-  const handlePlayRef = useRef<() => void>(() => {});
-  const stoppingRef = useRef(false);
-  const [showExportModal, setShowExportModal] = useState(false);
+  const currentRiff = useNewRiffStore((s) => s.currentRiff);
+  const feel = useNewRiffStore((s) => s.feel);
+  const savedRiffs = useNewRiffStore((s) => s.savedRiffs);
+  const generateNewRiff = useNewRiffStore((s) => s.generateNewRiff);
+  const setFeel = useNewRiffStore((s) => s.setFeel);
+  const toggleSaveCurrent = useNewRiffStore((s) => s.toggleSaveCurrent);
 
-  const {
-    mood,
-    style,
-    difficulty,
-    tempo,
-    bassMovement,
-    bluesyFeel,
-    complexity,
-    energy,
-    numBars,
-    currentRiff,
-    playbackState,
-    isLooping,
-    generationMode,
-    progression,
-    layers,
-    customProgression,
-    setMood,
-    setStyle,
-    setDifficulty,
-    setPlaybackState,
-    toggleLooping,
-    generateNewRiff,
-    getCurrentLayerEvents,
-    getAllLayerEvents,
-    getPlayableLayerEvents,
-    openChordArmory,
-  } = useRiffStore();
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  const isLayeredMode = generationMode === 'layerBuilder';
-  const isCustomChords = generationMode === 'customChords';
-  const isQuickRiff = generationMode === 'quickRiff';
-
-  // Keep a ref to isLooping so the onPlaybackEnd callback always sees current value
-  const isLoopingRef = useRef(isLooping);
-  isLoopingRef.current = isLooping;
-
-  // Use the new audio engine
   const audioEngine = useAudioEngine({
-    onPlaybackStart: () => setPlaybackState('playing'),
-    onPlaybackEnd: () => {
-      if (stoppingRef.current) {
-        stoppingRef.current = false;
-        setPlaybackState('stopped');
-      } else if (isLoopingRef.current) {
-        setTimeout(() => handlePlayRef.current(), 50);
-      } else {
-        setPlaybackState('stopped');
-      }
-    },
+    onPlaybackStart: () => setIsPlaying(true),
+    onPlaybackEnd: () => setIsPlaying(false),
   });
 
-  // Generate riff when entering Quick Riff mode (or on mount if already in it)
   useEffect(() => {
-    if (isQuickRiff) {
-      generateNewRiff();
-    }
-  }, [isQuickRiff]);
+    if (!currentRiff) generateNewRiff();
+  }, [currentRiff, generateNewRiff]);
 
-  // Auto-generate in customChords mode when progression changes
-  useEffect(() => {
-    if (isCustomChords && customProgression && customProgression.length > 0) {
-      generateNewRiff();
-    }
-  }, [isCustomChords, customProgression]);
-
-  // Auto-regenerate on parameter changes (with debounce) - only in quickRiff or customChords mode
-  useEffect(() => {
+  const handlePlayToggle = useCallback(() => {
     if (!currentRiff) return;
-    if (isAutoRegeneratingRef.current) return;
-    if (isLayeredMode) return;
-
-    isAutoRegeneratingRef.current = true;
-
-    const timeoutId = setTimeout(() => {
-      if (playbackState === 'playing') {
-        audioEngine.stop();
-      }
-      generateNewRiff();
-      isAutoRegeneratingRef.current = false;
-    }, 300);
-
-    return () => {
-      clearTimeout(timeoutId);
-      isAutoRegeneratingRef.current = false;
-    };
-  }, [mood, style, tempo, bassMovement, bluesyFeel, complexity, energy, numBars, difficulty, generationMode]);
-
-  const handlePlay = useCallback(() => {
-    if (isLayeredMode && progression) {
-      const allComplete = layers.isLayerApproved.melody &&
-                          layers.isLayerApproved.bass &&
-                          layers.isLayerApproved.fills;
-
-      if (allComplete) {
-        const events = getPlayableLayerEvents();
-        if (events.length > 0) {
-          audioEngine.play(events, tempo);
-        }
-      } else {
-        const events = getCurrentLayerEvents();
-        if (events.length > 0) {
-          audioEngine.play(events, tempo);
-        }
-      }
-    } else if (currentRiff) {
-      audioEngine.play(currentRiff.events, currentRiff.tempo);
+    if (isPlaying) {
+      audioEngine.stop();
+      return;
     }
-  }, [currentRiff, audioEngine, isLayeredMode, progression, layers, getCurrentLayerEvents, getPlayableLayerEvents, tempo]);
+    audioEngine.play(riffSpecToEvents(currentRiff), currentRiff.tempo_bpm);
+  }, [currentRiff, isPlaying, audioEngine]);
 
-  // Keep ref in sync so onPlaybackEnd can call handlePlay
-  handlePlayRef.current = handlePlay;
-
-  const handleStop = useCallback(() => {
-    stoppingRef.current = true;
-    audioEngine.stop();
-  }, [audioEngine]);
-
-  const handleNewRiff = useCallback(() => {
-    if (playbackState === 'playing') {
-      handleStop();
-    }
+  const handleGenerate = useCallback(() => {
+    if (isPlaying) audioEngine.stop();
     generateNewRiff();
-  }, [playbackState, handleStop, generateNewRiff]);
+  }, [isPlaying, audioEngine, generateNewRiff]);
 
-  const handleExport = useCallback(() => {
-    if (playbackState === 'playing') {
-      handleStop();
-    }
-    setShowExportModal(true);
-  }, [playbackState, handleStop]);
-
-  // Get allowed styles for current difficulty
-  const allowedStyles = getAllowedStylesForDifficulty(difficulty);
-
-  const hasCustomProgression = customProgression && customProgression.length > 0;
+  const isSaved = currentRiff
+    ? savedRiffs.some((r) => r.seed === currentRiff.seed)
+    : false;
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Content */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Mode Selector */}
-        <ModeSelector />
+        <FeelSelector value={feel} onChange={setFeel} />
 
-        {/* Difficulty Selector */}
-        <DifficultySelector selected={difficulty} onSelect={setDifficulty} />
-
-        {/* Mood Selector */}
-        <MoodSelector selected={mood} onSelect={setMood} />
-
-        {/* Style Selector */}
-        <StyleSelector
-          selected={style}
-          onSelect={setStyle}
-          allowedStyles={allowedStyles}
-        />
-
-        {/* Customization Panel */}
-        <KnobPanel />
-
-        {/* Custom Chords mode: Edit Chords button */}
-        {isCustomChords && (
-          <TouchableOpacity
-            style={styles.editChordsButton}
-            onPress={openChordArmory}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.editChordsText}>
-              {hasCustomProgression
-                ? `Edit Chords (${customProgression!.join(' > ')})`
-                : 'Choose Your Chords'}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Layer Builder (only in layered mode) */}
-        {isLayeredMode && <LayerBuilder />}
-
-        {/* Tab Display */}
-        <TabDisplay
-          events={isLayeredMode && progression ? getAllLayerEvents() : (currentRiff?.events || [])}
-          progression={isLayeredMode && progression ? progression : (currentRiff?.progression || [])}
-        />
-
-        {/* Progression Info */}
-        {(currentRiff || (isLayeredMode && progression)) && (
-          <View style={styles.infoBar}>
-            <Text style={styles.infoText}>
-              {(isLayeredMode && progression ? progression : currentRiff?.progression)?.join(' -> ')}
-            </Text>
-            <Text style={styles.tempoText}>{tempo} BPM</Text>
+        {currentRiff && (
+          <View style={styles.cardWrap}>
+            <RiffTabView riff={currentRiff} />
           </View>
         )}
       </ScrollView>
 
-      {/* Playback Controls */}
-      <PlaybackControls
-        isPlaying={playbackState === 'playing'}
-        isLooping={isLooping}
-        onPlay={handlePlay}
-        onStop={handleStop}
-        onNewRiff={handleNewRiff}
-        onExport={handleExport}
-        onToggleLoop={toggleLooping}
-        disabled={!currentRiff && !(isLayeredMode && progression)}
-        isLayeredMode={isLayeredMode}
-      />
-
-      {/* Chord Armory Modal */}
-      <ChordArmory />
-
-      {/* Export Modal */}
-      <ExportModal
-        visible={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        events={isLayeredMode && progression ? getAllLayerEvents() : (currentRiff?.events || [])}
-        tempo={tempo}
+      <RiffActionBar
+        isPlaying={isPlaying}
+        isSaved={isSaved}
+        disabled={!currentRiff}
+        onPlayToggle={handlePlayToggle}
+        onGenerate={handleGenerate}
+        onSaveToggle={toggleSaveCurrent}
       />
     </SafeAreaView>
   );
@@ -263,43 +87,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
-  infoBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: spacing.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-  },
-  infoText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  tempoText: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  editChordsButton: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.accent + '40',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-  },
-  editChordsText: {
-    color: colors.accent,
-    fontSize: 15,
-    fontWeight: '600',
+  cardWrap: {
+    marginTop: spacing.xs,
   },
 });

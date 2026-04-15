@@ -12,6 +12,7 @@ interface ScheduledNote {
 interface AudioEngineConfig {
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
+  onStepPlay?: (step: number) => void;
 }
 
 class AudioEngineImpl {
@@ -88,17 +89,56 @@ class AudioEngineImpl {
     // If stopped while pre-generating, bail out
     if (!this.isPlaying) return;
 
-    // Schedule each note with grouped jitter
+    // Schedule step callbacks (one per unique step, at the same humanized time)
+    if (this.config.onStepPlay) {
+      const scheduledSteps = new Set<number>();
+      for (const event of events) {
+        if (scheduledSteps.has(event.step)) continue;
+        scheduledSteps.add(event.step);
+        const delayMs = event.step * msPerStep;
+        const jitterMs = stepJitter.get(event.step) ?? 0;
+        const humanizedDelay = Math.max(0, delayMs + jitterMs);
+        const step = event.step;
+        const timeoutId = setTimeout(() => {
+          this.config.onStepPlay?.(step);
+        }, humanizedDelay);
+        this.scheduledNotes.push({ timeoutId });
+      }
+    }
+
+    // Count simultaneous notes per step for polyphony mixing
+    const stepNoteCounts = new Map<number, number>();
+    for (const event of events) {
+      stepNoteCounts.set(event.step, (stepNoteCounts.get(event.step) ?? 0) + 1);
+    }
+
+    // Track strum ordering within each step for micro-stagger
+    const stepStrumIndex = new Map<number, number>();
+    const STRUM_INTERVAL_MS = 12; // ms between notes in same-step group
+
+    // Schedule each note with grouped jitter + polyphony mixing
     for (const event of events) {
       const delayMs = event.step * msPerStep;
       const noteDurationMs = event.duration * msPerStep;
       const jitterMs = stepJitter.get(event.step) ?? 0;
-      const humanizedDelay = Math.max(0, delayMs + jitterMs);
 
       const velocity = event.velocity ?? 0.7;
       const technique = event.technique ?? undefined;
+
+      // Polyphony-aware volume: reduce per-note volume when multiple notes are simultaneous
+      const count = stepNoteCounts.get(event.step) ?? 1;
+      const polyScale = count > 1 ? 1 / Math.sqrt(count) : 1;
+      const playbackVolume = velocity * polyScale;
+
+      // Micro-stagger: spread simultaneous notes like a natural strum
+      const strumIdx = stepStrumIndex.get(event.step) ?? 0;
+      stepStrumIndex.set(event.step, strumIdx + 1);
+      const strumDelay = count > 1 ? strumIdx * STRUM_INTERVAL_MS : 0;
+
+      const humanizedDelay = Math.max(0, delayMs + jitterMs + strumDelay);
+
       const timeoutId = setTimeout(() => {
-        this.playNote(event.string, event.fret, noteDurationMs, velocity, technique);
+        this.playNote(event.string, event.fret, noteDurationMs, velocity, technique, playbackVolume);
       }, humanizedDelay);
 
       this.scheduledNotes.push({ timeoutId });
@@ -114,12 +154,13 @@ class AudioEngineImpl {
     fret: number,
     durationMs: number,
     velocity: number = 0.7,
-    technique?: Technique
+    technique?: Technique,
+    playbackVolume?: number
   ): Promise<void> {
     if (!this.isPlaying) return;
 
     try {
-      await SamplePlayer.playNote(string, fret, velocity, durationMs, technique);
+      await SamplePlayer.playNote(string, fret, velocity, durationMs, technique, playbackVolume);
     } catch (error) {
       console.error('Error playing note:', error);
     }
@@ -130,6 +171,7 @@ class AudioEngineImpl {
     this.scheduledNotes = [];
     this.endTimeoutId = null;
     SamplePlayer.stopAll();
+    this.config.onStepPlay?.(-1);
     this.config.onPlaybackEnd?.();
   }
 
@@ -148,6 +190,7 @@ class AudioEngineImpl {
 
     if (this.isPlaying) {
       this.isPlaying = false;
+      this.config.onStepPlay?.(-1);
       this.config.onPlaybackEnd?.();
     }
   }
@@ -166,6 +209,7 @@ export const AudioEngine = new AudioEngineImpl();
 export interface UseAudioEngineOptions {
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
+  onStepPlay?: (step: number) => void;
 }
 
 export interface AudioEngineRef {
@@ -182,6 +226,7 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
     AudioEngine.setConfig({
       onPlaybackStart: () => optionsRef.current.onPlaybackStart?.(),
       onPlaybackEnd: () => optionsRef.current.onPlaybackEnd?.(),
+      onStepPlay: (step: number) => optionsRef.current.onStepPlay?.(step),
     });
 
     AudioEngine.initialize().catch(console.error);

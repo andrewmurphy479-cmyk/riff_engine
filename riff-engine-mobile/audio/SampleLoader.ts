@@ -1,7 +1,7 @@
 import { Audio } from 'expo-av';
 import { Asset } from 'expo-asset';
 
-export type VelocityLayer = 'soft' | 'medium' | 'hard';
+export type VelocityLayer = 'pp' | 'p' | 'mf' | 'f' | 'ff';
 
 interface SampleEntry {
   midi: number;
@@ -53,7 +53,7 @@ class SampleLoaderImpl {
       if (hasSamples) {
         // Preload commonly used samples (middle range)
         const prioritySamples = [40, 45, 50, 55, 59, 64]; // Open string notes
-        const velocities: VelocityLayer[] = ['medium'];
+        const velocities: VelocityLayer[] = ['mf'];
 
         for (const midi of prioritySamples) {
           for (const velocity of velocities) {
@@ -116,7 +116,7 @@ class SampleLoaderImpl {
     }
   }
 
-  async getSample(midi: number, velocity: VelocityLayer = 'medium'): Promise<Audio.Sound | null> {
+  async getSample(midi: number, velocity: VelocityLayer = 'mf'): Promise<Audio.Sound | null> {
     if (!this.isInitialized) {
       await this.initialize();
     }
@@ -170,9 +170,11 @@ class SampleLoaderImpl {
 
   // Get velocity layer based on normalized velocity (0-1)
   getVelocityLayer(normalizedVelocity: number): VelocityLayer {
-    if (normalizedVelocity < 0.33) return 'soft';
-    if (normalizedVelocity < 0.66) return 'medium';
-    return 'hard';
+    if (normalizedVelocity < 0.2) return 'pp';
+    if (normalizedVelocity < 0.4) return 'p';
+    if (normalizedVelocity < 0.6) return 'mf';
+    if (normalizedVelocity < 0.8) return 'f';
+    return 'ff';
   }
 }
 
