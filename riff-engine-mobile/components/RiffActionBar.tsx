@@ -6,19 +6,23 @@ import { colors, spacing } from "../theme/colors";
 interface Props {
   isPlaying: boolean;
   isSaved: boolean;
+  isLooping: boolean;
   disabled?: boolean;
   onPlayToggle: () => void;
   onGenerate: () => void;
   onSaveToggle: () => void;
+  onLoopToggle: () => void;
 }
 
 export function RiffActionBar({
   isPlaying,
   isSaved,
+  isLooping,
   disabled,
   onPlayToggle,
   onGenerate,
   onSaveToggle,
+  onLoopToggle,
 }: Props) {
   return (
     <View style={styles.bar}>
@@ -30,6 +34,22 @@ export function RiffActionBar({
       >
         <Ionicons name="shuffle" size={22} color={colors.textSecondary} />
         <Text style={styles.iconLabel}>new</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.iconButton}
+        onPress={onLoopToggle}
+        disabled={disabled}
+        activeOpacity={0.6}
+      >
+        <Ionicons
+          name="repeat"
+          size={22}
+          color={isLooping ? colors.accent : colors.textSecondary}
+        />
+        <Text style={[styles.iconLabel, isLooping && styles.iconLabelActive]}>
+          loop
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -69,7 +89,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
     borderTopWidth: 1,
@@ -79,7 +99,7 @@ const styles = StyleSheet.create({
   iconButton: {
     alignItems: "center",
     justifyContent: "center",
-    width: 64,
+    width: 52,
     gap: 2,
   },
   iconLabel: {
@@ -89,16 +109,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: "uppercase",
   },
+  iconLabelActive: {
+    color: colors.accent,
+  },
   playButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     paddingVertical: 14,
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
     borderRadius: 999,
     backgroundColor: colors.accent,
-    minWidth: 150,
+    minWidth: 130,
     shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,

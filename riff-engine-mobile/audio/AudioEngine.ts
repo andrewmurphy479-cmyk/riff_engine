@@ -15,9 +15,17 @@ interface AudioEngineConfig {
   onStepPlay?: (step: number) => void;
 }
 
+interface LoopContext {
+  events: TabEvent[];
+  msPerStep: number;
+  totalDurationMs: number;
+}
+
 class AudioEngineImpl {
   private scheduledNotes: ScheduledNote[] = [];
   private isPlaying = false;
+  private isLooping = false;
+  private loopContext: LoopContext | null = null;
   private isInitialized = false;
   private endTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private config: AudioEngineConfig = {};
@@ -47,7 +55,7 @@ class AudioEngineImpl {
     this.config = config;
   }
 
-  async play(events: TabEvent[], bpm: number): Promise<void> {
+  async play(events: TabEvent[], bpm: number, loop: boolean = false): Promise<void> {
     if (!this.isInitialized) {
       await this.initialize();
     }
@@ -57,26 +65,15 @@ class AudioEngineImpl {
     if (events.length === 0) return;
 
     this.isPlaying = true;
+    this.isLooping = loop;
     this.config.onPlaybackStart?.();
 
     const stepsPerBeat = 4;
     const msPerStep = (60 / bpm / stepsPerBeat) * 1000;
-
     const maxStep = Math.max(...events.map(e => e.step + e.duration));
     const totalDurationMs = maxStep * msPerStep;
 
-    // Pre-compute grouped jitter: one jitter value per unique step
-    const stepJitter = new Map<number, number>();
-    for (const event of events) {
-      if (!stepJitter.has(event.step)) {
-        const stepInBar = event.step % 16;
-        const isDownbeat = stepInBar % 4 === 0;
-        const jitterRange = isDownbeat ? 3 : 8;
-        stepJitter.set(event.step, (Math.random() - 0.5) * 2 * jitterRange);
-      }
-    }
-
-    // Pre-generate all tones before scheduling (includes technique + string)
+    // Pre-generate all tones ONCE — tones are cached across loop iterations
     const noteSpecs = events.map(event => ({
       midiNote: fretToMidiNote(event.string, event.fret),
       durationMs: event.duration * msPerStep,
@@ -88,6 +85,25 @@ class AudioEngineImpl {
 
     // If stopped while pre-generating, bail out
     if (!this.isPlaying) return;
+
+    this.loopContext = { events, msPerStep, totalDurationMs };
+    this.scheduleIteration();
+  }
+
+  private scheduleIteration(): void {
+    if (!this.loopContext || !this.isPlaying) return;
+    const { events, msPerStep, totalDurationMs } = this.loopContext;
+
+    // Fresh grouped jitter per iteration so loops don't sound mechanical
+    const stepJitter = new Map<number, number>();
+    for (const event of events) {
+      if (!stepJitter.has(event.step)) {
+        const stepInBar = event.step % 16;
+        const isDownbeat = stepInBar % 4 === 0;
+        const jitterRange = isDownbeat ? 3 : 8;
+        stepJitter.set(event.step, (Math.random() - 0.5) * 2 * jitterRange);
+      }
+    }
 
     // Schedule step callbacks (one per unique step, at the same humanized time)
     if (this.config.onStepPlay) {
@@ -114,7 +130,7 @@ class AudioEngineImpl {
 
     // Track strum ordering within each step for micro-stagger
     const stepStrumIndex = new Map<number, number>();
-    const STRUM_INTERVAL_MS = 12; // ms between notes in same-step group
+    const STRUM_INTERVAL_MS = 12;
 
     // Schedule each note with grouped jitter + polyphony mixing
     for (const event of events) {
@@ -125,12 +141,10 @@ class AudioEngineImpl {
       const velocity = event.velocity ?? 0.7;
       const technique = event.technique ?? undefined;
 
-      // Polyphony-aware volume: reduce per-note volume when multiple notes are simultaneous
       const count = stepNoteCounts.get(event.step) ?? 1;
       const polyScale = count > 1 ? 1 / Math.sqrt(count) : 1;
       const playbackVolume = velocity * polyScale;
 
-      // Micro-stagger: spread simultaneous notes like a natural strum
       const strumIdx = stepStrumIndex.get(event.step) ?? 0;
       stepStrumIndex.set(event.step, strumIdx + 1);
       const strumDelay = count > 1 ? strumIdx * STRUM_INTERVAL_MS : 0;
@@ -144,9 +158,12 @@ class AudioEngineImpl {
       this.scheduledNotes.push({ timeoutId });
     }
 
+    // Loop mode: re-enter right at the downbeat of the next iteration (seamless).
+    // Non-loop: add 200ms tail so final notes can decay before cleanup.
+    const endDelay = this.isLooping ? totalDurationMs : totalDurationMs + 200;
     this.endTimeoutId = setTimeout(() => {
       this.handlePlaybackEnd();
-    }, totalDurationMs + 200);
+    }, endDelay);
   }
 
   private async playNote(
@@ -167,7 +184,18 @@ class AudioEngineImpl {
   }
 
   private handlePlaybackEnd(): void {
+    // Loop mode: re-enter scheduleIteration without cleaning up. Ringing tails
+    // from the previous iteration are allowed to bleed into the next downbeat.
+    if (this.isLooping && this.isPlaying && this.loopContext) {
+      this.scheduledNotes = [];
+      this.endTimeoutId = null;
+      this.scheduleIteration();
+      return;
+    }
+
     this.isPlaying = false;
+    this.isLooping = false;
+    this.loopContext = null;
     this.scheduledNotes = [];
     this.endTimeoutId = null;
     SamplePlayer.stopAll();
@@ -176,6 +204,10 @@ class AudioEngineImpl {
   }
 
   stop(): void {
+    // Reset loop intent first so any in-flight end timeout won't re-enter
+    this.isLooping = false;
+    this.loopContext = null;
+
     for (const note of this.scheduledNotes) {
       clearTimeout(note.timeoutId);
     }
@@ -193,6 +225,10 @@ class AudioEngineImpl {
       this.config.onStepPlay?.(-1);
       this.config.onPlaybackEnd?.();
     }
+  }
+
+  setLoop(loop: boolean): void {
+    this.isLooping = loop;
   }
 
   getIsPlaying(): boolean {
@@ -213,8 +249,9 @@ export interface UseAudioEngineOptions {
 }
 
 export interface AudioEngineRef {
-  play: (events: TabEvent[], bpm: number) => Promise<void>;
+  play: (events: TabEvent[], bpm: number, loop?: boolean) => Promise<void>;
   stop: () => void;
+  setLoop: (loop: boolean) => void;
   initialize: () => Promise<void>;
 }
 
@@ -236,17 +273,21 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
     };
   }, []);
 
-  const play = useCallback(async (events: TabEvent[], bpm: number) => {
-    await AudioEngine.play(events, bpm);
+  const play = useCallback(async (events: TabEvent[], bpm: number, loop?: boolean) => {
+    await AudioEngine.play(events, bpm, loop);
   }, []);
 
   const stop = useCallback(() => {
     AudioEngine.stop();
   }, []);
 
+  const setLoop = useCallback((loop: boolean) => {
+    AudioEngine.setLoop(loop);
+  }, []);
+
   const initialize = useCallback(async () => {
     await AudioEngine.initialize();
   }, []);
 
-  return { play, stop, initialize };
+  return { play, stop, setLoop, initialize };
 }

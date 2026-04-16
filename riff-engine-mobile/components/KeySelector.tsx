@@ -1,24 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Feel } from "../engine/riff/rhythm";
+import { GUITAR_KEYS } from "../store/useNewRiffStore";
 import { borderRadius, colors, spacing } from "../theme/colors";
 
-const FEELS: readonly { key: Feel; label: string }[] = [
-  { key: "driving",   label: "driving"   },
-  { key: "laid_back", label: "laid back" },
-  { key: "heavy",     label: "heavy"     },
-  { key: "bouncy",    label: "bouncy"    },
-];
-
 interface Props {
-  value: Feel | null;
+  value: string;
   locked: boolean;
-  onChange: (feel: Feel | null) => void;
+  onChange: (key: string) => void;
   onToggleLock: () => void;
 }
 
-export function FeelSelector({ value, locked, onChange, onToggleLock }: Props) {
+export function KeySelector({ value, locked, onChange, onToggleLock }: Props) {
   return (
     <View style={styles.row}>
       <TouchableOpacity
@@ -32,20 +25,20 @@ export function FeelSelector({ value, locked, onChange, onToggleLock }: Props) {
           size={11}
           color={locked ? colors.accent : colors.textMuted}
         />
-        <Text style={[styles.label, locked && styles.labelLocked]}>FEEL</Text>
+        <Text style={[styles.label, locked && styles.labelLocked]}>KEY</Text>
       </TouchableOpacity>
       <View style={styles.chips}>
-        {FEELS.map((f) => {
-          const active = value === f.key;
+        {GUITAR_KEYS.map((k) => {
+          const active = value === k;
           return (
             <TouchableOpacity
-              key={f.key}
+              key={k}
               style={[styles.chip, active && styles.chipActive]}
-              onPress={() => onChange(active ? null : f.key)}
+              onPress={() => onChange(k)}
               activeOpacity={0.7}
             >
               <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                {f.label}
+                {k}
               </Text>
             </TouchableOpacity>
           );
@@ -85,12 +78,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chip: {
+    minWidth: 34,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: borderRadius.full,
     backgroundColor: colors.chipInactive,
     borderWidth: 1,
     borderColor: colors.chipInactiveBorder,
+    alignItems: "center",
   },
   chipActive: {
     backgroundColor: colors.chipActive,
@@ -99,7 +94,8 @@ const styles = StyleSheet.create({
   chipLabel: {
     color: colors.textSecondary,
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
+    fontFamily: "monospace",
     letterSpacing: 0.3,
   },
   chipLabelActive: {

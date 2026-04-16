@@ -30,9 +30,10 @@ const BARS_PER_ROW = 2;
 interface Props {
   riff: RiffSpec;
   footer?: React.ReactNode;
+  onBarTap?: (barIdx: number) => void;
 }
 
-export function RiffTabView({ riff, footer }: Props) {
+export function RiffTabView({ riff, footer, onBarTap }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
 
   const includeBlue = riff.scale.includes("blue");
@@ -111,6 +112,24 @@ export function RiffTabView({ riff, footer }: Props) {
                     />
                   );
                 })}
+
+                {/* Tap target rect per bar — transparent, covers staff region */}
+                {onBarTap &&
+                  Array.from({ length: barsInRow }).map((_, i) => {
+                    const absoluteBarIdx = barStart + i;
+                    const bx = LABEL_WIDTH + i * STEPS_PER_BAR * STEP_WIDTH;
+                    return (
+                      <Rect
+                        key={`tap-${absoluteBarIdx}`}
+                        x={bx}
+                        y={TOP_PADDING - 14}
+                        width={STEPS_PER_BAR * STEP_WIDTH}
+                        height={STAFF_HEIGHT + 22}
+                        fill="transparent"
+                        onPress={() => onBarTap(absoluteBarIdx)}
+                      />
+                    );
+                  })}
 
                 {/* Phrase tag above each bar in this row */}
                 {Array.from({ length: barsInRow }).map((_, i) => {
