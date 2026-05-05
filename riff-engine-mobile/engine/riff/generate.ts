@@ -1,19 +1,35 @@
 import { assignPositions, passesStretchCheck } from "./playability";
-import { Feel, pickTemplate } from "./rhythm";
+import { Feel, Level, pickTemplate } from "./rhythm";
 import { Rng } from "./rng";
 import { notePool } from "./scale";
 import { Bar, Note, RiffSpec } from "./spec";
 import { buildPhrase } from "./structure";
+import { tagTechniques } from "./techniques";
 
 const DEFAULT_KEY = "E";
 const DEFAULT_TEMPO = 110;
 const DEFAULT_LOW_MIDI = 40;
 const DEFAULT_HIGH_MIDI = 64;
+const DEFAULT_LEVEL: Level = "intermediate";
+
+const LEVEL_STRETCH_LIMIT: Record<Level, number> = {
+  beginner: 3,
+  intermediate: 4,
+  advanced: 5,
+};
+
+// Chance of blue notes when level permits and include_blue isn't explicit.
+const LEVEL_BLUE_CHANCE: Record<Level, number> = {
+  beginner: 0,
+  intermediate: 0,
+  advanced: 0.5,
+};
 
 export interface GenerateOptions {
   key?: string;
   tempo_bpm?: number;
   feel?: Feel | null;
+  level?: Level;
   seed?: number | null;
   include_blue?: boolean;
   max_attempts?: number;
@@ -24,13 +40,22 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
     key = DEFAULT_KEY,
     tempo_bpm = DEFAULT_TEMPO,
     feel = null,
+    level = DEFAULT_LEVEL,
     seed: providedSeed = null,
-    include_blue = false,
+    include_blue: explicitBlue,
     max_attempts = 10,
   } = opts;
 
   const seed = providedSeed ?? Math.floor(Math.random() * 2 ** 31);
   const rng = new Rng(seed);
+
+  // Resolve include_blue: explicit call wins; otherwise derive from level.
+  const include_blue =
+    explicitBlue !== undefined
+      ? explicitBlue
+      : rng.random() < LEVEL_BLUE_CHANCE[level];
+
+  const stretchLimit = LEVEL_STRETCH_LIMIT[level];
 
   const pool = notePool(key, DEFAULT_LOW_MIDI, DEFAULT_HIGH_MIDI, include_blue);
   if (pool.length === 0) {
@@ -38,11 +63,11 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
   }
 
   for (let attempt = 0; attempt < max_attempts; attempt++) {
-    const template = pickTemplate(rng, feel);
-    const phrase = buildPhrase(template, pool, rng);
+    const template = pickTemplate(rng, feel, level);
+    const phrase = buildPhrase(template, pool, rng, key);
 
     const flatMidi = phrase.flat().map((s) => s.midi);
-    const path = assignPositions(flatMidi);
+    const path = assignPositions(flatMidi, stretchLimit);
     if (path === null) continue;
 
     // Force Bar A-repeat (index 2) to reuse Bar A's fingering so the hook
@@ -55,7 +80,7 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
     for (let i = 0; i < barSizes[0]; i++) {
       path[offsets[2] + i] = path[offsets[0] + i];
     }
-    if (!passesStretchCheck(path)) continue;
+    if (!passesStretchCheck(path, stretchLimit)) continue;
 
     const bars: Bar[] = [];
     let k = 0;
@@ -81,7 +106,7 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
       scale: "minor_pentatonic" + (include_blue ? "+blue" : ""),
       tempo_bpm,
       time_sig: [4, 4],
-      bars,
+      bars: tagTechniques(bars),
       motif_structure: "AA'AB",
       seed,
       rhythm_name: template.name,

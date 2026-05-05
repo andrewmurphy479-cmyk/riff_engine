@@ -5,7 +5,12 @@ export interface NotePosition {
   fret: number;
 }
 
-export type Technique = 'hammer' | 'pull' | 'slide' | 'bend' | null;
+export type Technique =
+  | 'pluck'
+  | 'hammer'
+  | 'pull'
+  | 'bend'
+  | 'mute';
 
 export interface TabEvent {
   string: GuitarString;

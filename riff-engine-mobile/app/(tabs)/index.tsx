@@ -8,28 +8,33 @@ import {
 } from "react-native";
 import { FeelSelector } from "../../components/FeelSelector";
 import { KeySelector } from "../../components/KeySelector";
+import { LevelSelector } from "../../components/LevelSelector";
 import { RiffActionBar } from "../../components/RiffActionBar";
 import { RiffTabView } from "../../components/RiffTabView";
 import { TempoStepper } from "../../components/TempoStepper";
 import { useAudioEngine } from "../../audio/AudioEngine";
 import { useNewRiffStore } from "../../store/useNewRiffStore";
-import { riffSpecToEvents } from "../../engine/riff/toEvents";
+import { riffSpecToEvents, stripTechniques } from "../../engine/riff/toEvents";
 import { colors, spacing } from "../../theme/colors";
 
 export default function HomeScreen() {
   const currentRiff = useNewRiffStore((s) => s.currentRiff);
   const feel = useNewRiffStore((s) => s.feel);
   const key = useNewRiffStore((s) => s.key);
+  const level = useNewRiffStore((s) => s.level);
   const lockedFields = useNewRiffStore((s) => s.lockedFields);
   const tempoOverride = useNewRiffStore((s) => s.tempoOverride);
   const isLooping = useNewRiffStore((s) => s.isLooping);
+  const showEmbellishments = useNewRiffStore((s) => s.showEmbellishments);
   const savedRiffs = useNewRiffStore((s) => s.savedRiffs);
   const generateNewRiff = useNewRiffStore((s) => s.generateNewRiff);
   const rerollBar = useNewRiffStore((s) => s.rerollBar);
   const setFeel = useNewRiffStore((s) => s.setFeel);
   const setKey = useNewRiffStore((s) => s.setKey);
+  const setLevel = useNewRiffStore((s) => s.setLevel);
   const setTempoOverride = useNewRiffStore((s) => s.setTempoOverride);
   const setIsLooping = useNewRiffStore((s) => s.setIsLooping);
+  const toggleEmbellishments = useNewRiffStore((s) => s.toggleEmbellishments);
   const toggleLock = useNewRiffStore((s) => s.toggleLock);
   const toggleSaveCurrent = useNewRiffStore((s) => s.toggleSaveCurrent);
 
@@ -52,8 +57,13 @@ export default function HomeScreen() {
       audioEngine.stop();
       return;
     }
-    audioEngine.play(riffSpecToEvents(currentRiff), effectiveBpm, isLooping);
-  }, [currentRiff, isPlaying, audioEngine, effectiveBpm, isLooping]);
+    const events = riffSpecToEvents(currentRiff);
+    audioEngine.play(
+      showEmbellishments ? events : stripTechniques(events),
+      effectiveBpm,
+      isLooping,
+    );
+  }, [currentRiff, isPlaying, audioEngine, effectiveBpm, isLooping, showEmbellishments]);
 
   const handleGenerate = useCallback(() => {
     if (isPlaying) audioEngine.stop();
@@ -73,14 +83,15 @@ export default function HomeScreen() {
       const STEPS_PER_BAR = 16;
       const startStep = barIdx * STEPS_PER_BAR;
       const endStep = startStep + STEPS_PER_BAR;
-      const barEvents = riffSpecToEvents(currentRiff)
+      const filtered = riffSpecToEvents(currentRiff)
         .filter((e) => e.step >= startStep && e.step < endStep)
         .map((e) => ({ ...e, step: e.step - startStep }));
+      const barEvents = showEmbellishments ? filtered : stripTechniques(filtered);
       if (barEvents.length === 0) return;
       setIsLooping(true);
       audioEngine.play(barEvents, effectiveBpm, true);
     },
-    [currentRiff, effectiveBpm, audioEngine, setIsLooping],
+    [currentRiff, effectiveBpm, audioEngine, setIsLooping, showEmbellishments],
   );
 
   const handleBarTap = useCallback(
@@ -116,6 +127,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <LevelSelector value={level} onChange={setLevel} />
         <KeySelector
           value={key}
           locked={lockedFields.key}
@@ -131,7 +143,12 @@ export default function HomeScreen() {
 
         {currentRiff && (
           <View style={styles.cardWrap}>
-            <RiffTabView riff={currentRiff} onBarTap={handleBarTap} />
+            <RiffTabView
+              riff={currentRiff}
+              onBarTap={handleBarTap}
+              showEmbellishments={showEmbellishments}
+              onToggleEmbellishments={toggleEmbellishments}
+            />
           </View>
         )}
       </ScrollView>

@@ -2,10 +2,30 @@ import { Rng } from "./rng";
 
 export type Feel = "driving" | "heavy" | "bouncy" | "laid_back";
 
+export type Level = "beginner" | "intermediate" | "advanced";
+
 export interface RhythmTemplate {
   name: string;
   feel: Feel;
   steps: readonly (readonly [number, number])[];
+}
+
+// Max notes/bar by level
+const LEVEL_NOTE_CAP: Record<Level, number> = {
+  beginner: 5,
+  intermediate: 7,
+  advanced: 8,
+};
+
+function hasSixteenths(t: RhythmTemplate): boolean {
+  return t.steps.some(([, d]) => d === 1);
+}
+
+export function allowedForLevel(t: RhythmTemplate, level: Level): boolean {
+  if (t.steps.length > LEVEL_NOTE_CAP[level]) return false;
+  // Beginners avoid 16th-note subdivisions (half_gallop, funk_skip)
+  if (level === "beginner" && hasSixteenths(t)) return false;
+  return true;
 }
 
 export const RHYTHM_LIBRARY: readonly RhythmTemplate[] = [
@@ -65,8 +85,17 @@ export function byFeel(feel: Feel): readonly RhythmTemplate[] {
   return RHYTHM_LIBRARY.filter((t) => t.feel === feel);
 }
 
-export function pickTemplate(rng: Rng, feel: Feel | null = null): RhythmTemplate {
-  const pool = feel ? byFeel(feel) : RHYTHM_LIBRARY;
-  if (pool.length === 0) throw new Error(`no rhythm templates for feel=${feel}`);
+export function pickTemplate(
+  rng: Rng,
+  feel: Feel | null = null,
+  level: Level = "intermediate",
+): RhythmTemplate {
+  const feelPool = feel ? byFeel(feel) : RHYTHM_LIBRARY;
+  const pool = feelPool.filter((t) => allowedForLevel(t, level));
+  if (pool.length === 0) {
+    throw new Error(
+      `no rhythm templates for feel=${feel} at level=${level}`,
+    );
+  }
   return rng.choice(pool);
 }

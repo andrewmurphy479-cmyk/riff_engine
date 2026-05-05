@@ -1,4 +1,4 @@
-import { TabEvent, GuitarString, Technique } from "../types";
+import { TabEvent, GuitarString } from "../types";
 import { RiffSpec } from "./spec";
 
 const STRING_INDEX_TO_LETTER: readonly GuitarString[] = [
@@ -7,20 +7,25 @@ const STRING_INDEX_TO_LETTER: readonly GuitarString[] = [
 
 const STEPS_PER_BAR = 16;
 
+export function stripTechniques(events: TabEvent[]): TabEvent[] {
+  return events.map(({ technique: _t, ...rest }) => rest);
+}
+
 export function riffSpecToEvents(riff: RiffSpec): TabEvent[] {
   const events: TabEvent[] = [];
   riff.bars.forEach((bar, barIdx) => {
     for (const note of bar.notes) {
-      events.push({
+      const event: TabEvent = {
         string: STRING_INDEX_TO_LETTER[note.string],
         fret: note.fret,
         step: barIdx * STEPS_PER_BAR + note.step,
         duration: note.duration,
         velocity: note.velocity / 127,
-        technique: note.technique === "hammer" || note.technique === "slide"
-          ? (note.technique as Technique)
-          : null,
-      });
+      };
+      if (note.technique !== "pluck") {
+        event.technique = note.technique;
+      }
+      events.push(event);
     }
   });
   return events;

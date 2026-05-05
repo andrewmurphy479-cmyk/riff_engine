@@ -2,13 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generate } from "../engine/riff/generate";
-import { Feel } from "../engine/riff/rhythm";
+import { Feel, Level } from "../engine/riff/rhythm";
 import { RiffSpec } from "../engine/riff/spec";
 
 export const GUITAR_KEYS = ["E", "A", "D", "G", "C", "B", "F#"] as const;
 export type GuitarKey = (typeof GUITAR_KEYS)[number];
 
+export const LEVELS: readonly Level[] = ["beginner", "intermediate", "advanced"];
+
 const DEFAULT_KEY: GuitarKey = "E";
+const DEFAULT_LEVEL: Level = "intermediate";
 
 const FEELS: readonly Feel[] = ["driving", "laid_back", "heavy", "bouncy"];
 
@@ -31,20 +34,26 @@ interface NewRiffState {
   currentRiff: RiffSpec | null;
   key: string;
   feel: Feel | null;
+  level: Level;
   tempoOverride: number | null;
   isLooping: boolean;
+  showEmbellishments: boolean;
   lockedFields: LockedFields;
   savedRiffs: RiffSpec[];
+  exploreIntroDismissed: boolean;
 
   generateNewRiff: () => void;
   rerollBar: (barIdx: number) => void;
   setKey: (key: string) => void;
   setFeel: (feel: Feel | null) => void;
+  setLevel: (level: Level) => void;
   setTempoOverride: (bpm: number | null) => void;
   setIsLooping: (v: boolean) => void;
+  toggleEmbellishments: () => void;
   toggleLock: (field: LockField) => void;
   toggleSaveCurrent: () => void;
   unsaveRiff: (seed: number) => void;
+  dismissExploreIntro: () => void;
 }
 
 export const useNewRiffStore = create<NewRiffState>()(
@@ -53,17 +62,18 @@ export const useNewRiffStore = create<NewRiffState>()(
       currentRiff: null,
       key: DEFAULT_KEY,
       feel: null,
+      level: DEFAULT_LEVEL,
       tempoOverride: null,
       isLooping: false,
+      showEmbellishments: true,
       lockedFields: { key: false, feel: false },
       savedRiffs: [],
+      exploreIntroDismissed: false,
 
       generateNewRiff: () => {
-        const { key, feel, lockedFields } = get();
+        const { key, feel, level, lockedFields } = get();
         const nextKey = lockedFields.key ? key : randomKey();
-        // Feel unlocked + concrete value: shuffle through feels.
-        // Feel unlocked + null (no preference): stay null; the generator
-        // still varies internally, but the UI doesn't flip chips unasked.
+        // Feel unlocked + concrete: shuffle. Feel unlocked + null: stay null.
         const nextFeel: Feel | null = lockedFields.feel
           ? feel
           : feel === null
@@ -72,17 +82,21 @@ export const useNewRiffStore = create<NewRiffState>()(
         set({
           key: nextKey,
           feel: nextFeel,
-          currentRiff: generate({ key: nextKey, feel: nextFeel }),
+          currentRiff: generate({
+            key: nextKey,
+            feel: nextFeel,
+            level,
+          }),
         });
       },
 
       rerollBar: (barIdx) => {
-        const { currentRiff, key, feel } = get();
+        const { currentRiff, key, feel, level } = get();
         if (!currentRiff) return;
         if (barIdx < 0 || barIdx >= currentRiff.bars.length) return;
         // Bar re-roll preserves the current key regardless of lock — user is
         // targeting this bar, not the whole riff's identity.
-        const freshRiff = generate({ key, feel });
+        const freshRiff = generate({ key, feel, level });
         if (barIdx >= freshRiff.bars.length) return;
         const newBars = currentRiff.bars.map((bar, i) =>
           i === barIdx ? freshRiff.bars[barIdx] : bar,
@@ -91,20 +105,28 @@ export const useNewRiffStore = create<NewRiffState>()(
       },
 
       setKey: (key) => {
-        const { feel, lockedFields } = get();
+        const { feel, level, lockedFields } = get();
         set({
           key,
           lockedFields: { ...lockedFields, key: true },
-          currentRiff: generate({ key, feel }),
+          currentRiff: generate({ key, feel, level }),
         });
       },
 
       setFeel: (feel) => {
-        const { key, lockedFields } = get();
+        const { key, level, lockedFields } = get();
         set({
           feel,
           lockedFields: { ...lockedFields, feel: feel !== null },
-          currentRiff: generate({ key, feel }),
+          currentRiff: generate({ key, feel, level }),
+        });
+      },
+
+      setLevel: (level) => {
+        const { key, feel } = get();
+        set({
+          level,
+          currentRiff: generate({ key, feel, level }),
         });
       },
 
@@ -114,6 +136,10 @@ export const useNewRiffStore = create<NewRiffState>()(
 
       setIsLooping: (v) => {
         set({ isLooping: v });
+      },
+
+      toggleEmbellishments: () => {
+        set({ showEmbellishments: !get().showEmbellishments });
       },
 
       toggleLock: (field) => {
@@ -137,6 +163,8 @@ export const useNewRiffStore = create<NewRiffState>()(
         const { savedRiffs } = get();
         set({ savedRiffs: savedRiffs.filter((r) => r.seed !== seed) });
       },
+
+      dismissExploreIntro: () => set({ exploreIntroDismissed: true }),
     }),
     {
       name: "riff-engine:saved-riffs:v1",
@@ -145,24 +173,49 @@ export const useNewRiffStore = create<NewRiffState>()(
         savedRiffs: state.savedRiffs,
         key: state.key,
         feel: state.feel,
+        level: state.level,
         tempoOverride: state.tempoOverride,
         isLooping: state.isLooping,
+        showEmbellishments: state.showEmbellishments,
         lockedFields: state.lockedFields,
+        exploreIntroDismissed: state.exploreIntroDismissed,
       }),
-      version: 3,
+      version: 8,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           return {
             savedRiffs: persisted?.savedRiffs ?? [],
             key: DEFAULT_KEY,
             feel: null,
+            level: DEFAULT_LEVEL,
             tempoOverride: null,
             isLooping: false,
             lockedFields: { key: false, feel: false },
+            exploreIntroDismissed: false,
           };
         }
         if (version < 3) {
-          return { ...persisted, isLooping: false };
+          return { ...persisted, isLooping: false, level: DEFAULT_LEVEL };
+        }
+        if (version < 4) {
+          return { ...persisted, level: DEFAULT_LEVEL };
+        }
+        if (version < 5) {
+          return { ...persisted, exploreIntroDismissed: false };
+        }
+        if (version < 7) {
+          return { ...persisted, showEmbellishments: true };
+        }
+        if (version < 8) {
+          const { style: _style, ...rest } = persisted ?? {};
+          const {
+            style: _styleLocked,
+            ...restLocked
+          } = rest?.lockedFields ?? { key: false, feel: false };
+          return {
+            ...rest,
+            lockedFields: { key: !!restLocked.key, feel: !!restLocked.feel },
+          };
         }
         return persisted;
       },

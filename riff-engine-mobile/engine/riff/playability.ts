@@ -3,7 +3,7 @@ import { positionsForMidi } from "./fretboard";
 type Position = readonly [number, number];
 
 const STRETCH_WINDOW = 4;
-const STRETCH_HARD_LIMIT = 5;
+const DEFAULT_STRETCH_LIMIT = 5;
 const FRET_MOVE_COST = 1.0;
 const STRING_SKIP_COST = 0.5;
 const INF = Infinity;
@@ -17,13 +17,16 @@ function transitionCost(prev: Position, nxt: Position): number {
   return fretDelta + stringDelta;
 }
 
-export function passesStretchCheck(path: readonly Position[]): boolean {
+export function passesStretchCheck(
+  path: readonly Position[],
+  stretchLimit: number = DEFAULT_STRETCH_LIMIT,
+): boolean {
   for (let i = 0; i < path.length; i++) {
     const start = Math.max(0, i - STRETCH_WINDOW + 1);
     const window = path.slice(start, i + 1);
     const fretted = window.filter(([, f]) => f > 0).map(([, f]) => f);
     if (fretted.length === 0) continue;
-    if (Math.max(...fretted) - Math.min(...fretted) > STRETCH_HARD_LIMIT) {
+    if (Math.max(...fretted) - Math.min(...fretted) > stretchLimit) {
       return false;
     }
   }
@@ -32,6 +35,7 @@ export function passesStretchCheck(path: readonly Position[]): boolean {
 
 export function assignPositions(
   midiSequence: readonly number[],
+  stretchLimit: number = DEFAULT_STRETCH_LIMIT,
 ): [number, number][] | null {
   if (midiSequence.length === 0) return [];
 
@@ -82,6 +86,6 @@ export function assignPositions(
   }
   path.reverse();
 
-  if (!passesStretchCheck(path)) return null;
+  if (!passesStretchCheck(path, stretchLimit)) return null;
   return path;
 }

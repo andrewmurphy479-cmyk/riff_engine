@@ -9,12 +9,13 @@ export function buildPhrase(
   template: RhythmTemplate,
   pool: readonly PoolEntry[],
   rng: Rng,
+  _key?: string,
 ): PitchedStep[][] {
   const barA = fillMelody(template, pool, rng, { endingRule: "not_root" });
   const barAPrime = mutateBar(barA, pool, rng);
   const barARepeat: PitchedStep[] = barA.map((s) => ({ ...s }));
   const barB = fillMelody(template, pool, rng, {
-    anchorMidi: barA[barA.length - 1].midi,
+    anchorMidi: barA[barA.length - 1]?.midi ?? null,
     endingRule: "root",
   });
   return [barA, barAPrime, barARepeat, barB];

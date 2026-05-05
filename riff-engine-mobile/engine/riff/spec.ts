@@ -1,4 +1,5 @@
-export type Technique = "pluck" | "hammer" | "slide" | "mute";
+import type { Technique } from "../types";
+export type { Technique };
 
 export interface PitchedStep {
   step: number;
