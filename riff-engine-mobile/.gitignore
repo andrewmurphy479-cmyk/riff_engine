@@ -39,3 +39,10 @@ yarn-error.*
 
 expo-env.d.ts
 # @end expo-cli
+
+# Per-user Claude Code settings
+.claude/
+
+# Personal scratch / planning notes (reference deleted code, not part of project)
+DO THIS NEXT SESSION/
+docs/

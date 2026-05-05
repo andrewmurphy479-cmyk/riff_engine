@@ -49,3 +49,6 @@ coverage/
 
 # Misc
 *.log
+
+# Personal scratch (not part of project)
+/PROMPTS/
