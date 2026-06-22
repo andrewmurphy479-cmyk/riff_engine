@@ -62,10 +62,10 @@ function techniqueParams(technique: Technique | undefined) {
     case 'hammer':
     case 'pull':
       return {
-        dampingMod: 0,          // Normal sustain
-        transientScale: 0.15,   // Much softer attack — no pick
-        noiseScale: 0.3,        // Less noise in excitation
-        toneOffset: -0.08,      // Slightly warmer
+        dampingMod: 0.001,      // Slightly longer sustain — legato ring
+        transientScale: 0.05,   // Near-zero pick attack — finger articulation
+        noiseScale: 0.2,        // Very clean excitation
+        toneOffset: -0.18,      // Noticeably warmer
       };
     case 'bend':
       return {
@@ -74,13 +74,14 @@ function techniqueParams(technique: Technique | undefined) {
         noiseScale: 0.7,
         toneOffset: 0.05,       // Slightly brighter from tension
       };
-    case 'slide':
+    case 'mute':
       return {
-        dampingMod: -0.002,     // More damping from finger drag
-        transientScale: 0.3,    // Reduced attack
-        noiseScale: 1.5,        // Extra fret noise
-        toneOffset: -0.05,
+        dampingMod: -0.012,     // Strong damping — palm-muted chug
+        transientScale: 1.1,    // Slightly more attack click
+        noiseScale: 0.5,
+        toneOffset: -0.25,      // Much darker tone
       };
+    case 'pluck':
     default:
       return {
         dampingMod: 0,
@@ -97,7 +98,14 @@ export interface SynthOptions {
   velocity?: number;
   technique?: Technique;
   guitarString?: GuitarString;
+  /** Extra samples rendered past durationMs so the string rings out naturally. */
+  sustainTailMs?: number;
 }
+
+// Default ring-out tail added to every synthesized note. Karplus-Strong damping
+// provides a realistic decay curve over this window — without it, notes get
+// hard-cut at their nominal duration and feel staccato.
+const DEFAULT_SUSTAIN_TAIL_MS = 120;
 
 export interface StereoSamples {
   left: Float32Array;
@@ -115,10 +123,12 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     velocity = 0.7,
     technique,
     guitarString,
+    sustainTailMs = DEFAULT_SUSTAIN_TAIL_MS,
   } = opts;
 
   const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
-  const numSamples = Math.floor((durationMs / 1000) * SAMPLE_RATE);
+  const totalDurationMs = durationMs + sustainTailMs;
+  const numSamples = Math.floor((totalDurationMs / 1000) * SAMPLE_RATE);
   const vp = velocityParams(velocity);
   const tp = techniqueParams(technique);
 
@@ -213,21 +223,6 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     }
   }
 
-  // --- Slide noise buffer (fret friction) ---
-  let slideNoise: Float32Array | null = null;
-  if (technique === 'slide') {
-    slideNoise = new Float32Array(numSamples);
-    let snPrev = 0;
-    for (let i = 0; i < numSamples; i++) {
-      const raw = (Math.random() * 2 - 1) * 0.02;
-      // Band-pass: high-pass then low-pass
-      const hp = raw - snPrev * 0.95;
-      snPrev = raw;
-      const t = i / SAMPLE_RATE;
-      slideNoise[i] = hp * Math.exp(-2 * t); // Decays over time
-    }
-  }
-
   for (let i = 0; i < numSamples; i++) {
     const tableIndex = i % periodLength;
     const nextIndex = (i + 1) % periodLength;
@@ -276,11 +271,6 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
       sample += transientBuffer[i];
     }
 
-    // Slide fret noise
-    if (slideNoise && i < slideNoise.length) {
-      sample += slideNoise[i];
-    }
-
     // Smooth tanh saturation — no branching, no discontinuities
     sample = Math.tanh(sample * 1.2) * 0.83;
 
@@ -294,7 +284,8 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
   // DC blocker (removes sub-bass rumble <30Hz without killing clarity)
   let dcPrev = 0;
   let dcOut = 0;
-  const dcCoeff = 0.997; // ~30Hz cutoff at 44100 SR
+  // Frequency-correct at any sample rate (was hardcoded for 44.1kHz).
+  const dcCoeff = 1 - (2 * Math.PI * 30) / SAMPLE_RATE;
   for (let i = 0; i < numSamples; i++) {
     dcOut = mono[i] - dcPrev + dcCoeff * dcOut;
     dcPrev = mono[i];

@@ -41,7 +41,8 @@ class AudioExporterImpl {
       const secondsPerStep = 60 / bpm / stepsPerBeat;
 
       const maxStep = Math.max(...events.map(e => e.step + e.duration));
-      const totalDurationSeconds = maxStep * secondsPerStep + 0.5;
+      // 1.2s tail: enough for low-E decays + reverb bloom.
+      const totalDurationSeconds = maxStep * secondsPerStep + 1.2;
       const totalSamples = Math.ceil(totalDurationSeconds * SAMPLE_RATE);
 
       onProgress?.({ phase: 'rendering', progress: 0.1, message: 'Rendering audio...' });

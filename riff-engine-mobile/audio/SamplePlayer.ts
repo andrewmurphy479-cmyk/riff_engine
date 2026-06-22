@@ -3,7 +3,21 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { SampleLoader, VelocityLayer } from './SampleLoader';
 import { GuitarString, Technique } from '../engine/types';
 import { fretToMidiNote } from './noteMapping';
-import { synthesizeTone, createWavBuffer, arrayBufferToBase64 } from './KarplusStrong';
+import {
+  synthesizeTone,
+  createStereoWavBuffer,
+  arrayBufferToBase64,
+  applyReverb,
+  SAMPLE_RATE,
+} from './KarplusStrong';
+
+// Room-tail length baked into each cached clip so reverb has space to bloom.
+const REVERB_PAD_MS = 300;
+// Wet mix for the per-clip reverb — lighter than export's 0.15 to avoid
+// obvious tails on rapid playback (each clip carries its own reverb).
+const REALTIME_REVERB_MIX = 0.08;
+// Final fade-out to keep end-of-clip transitions click-free.
+const TAIL_FADE_MS = 50;
 
 // Sound pool configuration - one per guitar string for polyphony
 const POOL_SIZE = 6;
@@ -55,6 +69,7 @@ function techniqueCacheKey(technique: Technique | undefined): string {
 
 class SamplePlayerImpl {
   private soundPool: (PooledSound | null)[] = new Array(POOL_SIZE).fill(null);
+  private fadingSounds: Set<Audio.Sound> = new Set();
   private isInitialized = false;
 
   async initialize(): Promise<void> {
@@ -93,8 +108,10 @@ class SamplePlayerImpl {
     const midiNote = fretToMidiNote(guitarString, fret);
     const stringIndex = STRING_TO_INDEX[guitarString];
 
-    // Stop any currently playing sound on this string
-    await this.stopString(stringIndex);
+    // Fade out any currently playing sound on this string in the background —
+    // do NOT await, or rapid same-string notes get 20-40ms of serial async
+    // overhead injected between them (audible as glitching/lateness).
+    this.stopString(stringIndex);
 
     // Generate and play synthesized tone
     await this.playSynthNote(midiNote, stringIndex, velocity, durationMs, technique, guitarString, playbackVolume);
@@ -174,17 +191,30 @@ class SamplePlayerImpl {
     guitarString: GuitarString
   ): Promise<string> {
     const velocity = layerToVelocity(layer);
-    // synthesizeTone returns stereo, but for cached playback files we sum to mono
-    // (expo-av doesn't give us per-note pan control, stereo is handled at export level)
     const { left, right } = synthesizeTone({ midiNote, durationMs, velocity, technique, guitarString });
 
-    // Downmix to mono for the cache file
-    const mono = new Float32Array(left.length);
-    for (let i = 0; i < left.length; i++) {
-      mono[i] = (left[i] + right[i]) * 0.5;
+    // Pad with silence so per-clip reverb has room to tail out.
+    const padSamples = Math.floor((SAMPLE_RATE * REVERB_PAD_MS) / 1000);
+    const paddedL = new Float32Array(left.length + padSamples);
+    const paddedR = new Float32Array(right.length + padSamples);
+    paddedL.set(left);
+    paddedR.set(right);
+
+    applyReverb(paddedL, paddedR, REALTIME_REVERB_MIX);
+
+    const fadeSamples = Math.min(
+      paddedL.length,
+      Math.floor((SAMPLE_RATE * TAIL_FADE_MS) / 1000),
+    );
+    const fadeStart = paddedL.length - fadeSamples;
+    for (let i = fadeStart; i < paddedL.length; i++) {
+      const phase = (i - fadeStart) / fadeSamples;
+      const gain = Math.cos(phase * Math.PI * 0.5);
+      paddedL[i] *= gain;
+      paddedR[i] *= gain;
     }
 
-    const wavBuffer = createWavBuffer(mono);
+    const wavBuffer = createStereoWavBuffer(paddedL, paddedR);
 
     const techKey = techniqueCacheKey(technique);
     const fileName = `tone_${midiNote}_${durationMs}_${layer}_${techKey}.wav`;
@@ -231,33 +261,58 @@ class SamplePlayerImpl {
     }
   }
 
-  private async stopString(stringIndex: number): Promise<void> {
+  /**
+   * Fade + unload the sound on `stringIndex` in the background. Returns
+   * immediately so the caller can start the next note without waiting on
+   * async I/O. The old sound is tracked in `fadingSounds` so `stopAll` can
+   * still flush it on playback stop.
+   */
+  private stopString(stringIndex: number): void {
     const pooled = this.soundPool[stringIndex];
     if (!pooled) return;
 
     pooled.isPlaying = false;
+    this.soundPool[stringIndex] = null;
 
-    if (pooled.sound) {
+    const sound = pooled.sound;
+    if (!sound) return;
+
+    // Detach the didJustFinish handler so the old sound's natural end can't
+    // clobber a new sound that has since been installed in the pool slot.
+    try {
+      sound.setOnPlaybackStatusUpdate(null);
+    } catch {}
+
+    this.fadingSounds.add(sound);
+    void (async () => {
       try {
-        // Fade out over ~15ms to avoid audible clicks on note stops
-        await pooled.sound.setVolumeAsync(0);
-        await new Promise(resolve => setTimeout(resolve, 15));
-        await pooled.sound.stopAsync();
-        await pooled.sound.unloadAsync();
-      } catch (e) {
+        await sound.setVolumeAsync(0);
+        await new Promise(resolve => setTimeout(resolve, 25));
+        await sound.stopAsync();
+        await sound.unloadAsync();
+      } catch {
         // Ignore stop/unload errors
       }
-    }
-
-    this.soundPool[stringIndex] = null;
+      this.fadingSounds.delete(sound);
+    })();
   }
 
   async stopAll(): Promise<void> {
-    const stopPromises: Promise<void>[] = [];
     for (let i = 0; i < POOL_SIZE; i++) {
-      stopPromises.push(this.stopString(i));
+      this.stopString(i);
     }
-    await Promise.all(stopPromises);
+    const fading = Array.from(this.fadingSounds);
+    this.fadingSounds.clear();
+    await Promise.all(
+      fading.map(async (sound) => {
+        try {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+        } catch {
+          // Ignore
+        }
+      })
+    );
   }
 
   isStringPlaying(guitarString: GuitarString): boolean {
