@@ -1,3 +1,5 @@
+import { RiffSpec } from "./spec";
+
 export const ROLE_COLORS: Record<string, string> = {
   root: "#4A7AFF",
   b3:   "#C8B560",
@@ -71,3 +73,55 @@ export const ROLE_NARRATIVES: Record<string, string> = {
   b7: "The flat seventh is the blues color tone. It creates that yearning, unresolved pull that defines rock and blues phrasing.",
   blue: "The blue note (b5) is pure grit. No resolution — it's there for tension and bite. This is what makes a riff snarl.",
 };
+
+export const RHYTHM_DISPLAY_NAMES: Record<string, string> = {
+  four_on_floor: "Four on the Floor",
+  straight_8ths: "Straight Eighths",
+  push_and_4: "Push & Four",
+  half_gallop: "Half Gallop",
+  sabbath_space: "Sabbath Space",
+  iron_stomp: "Iron Stomp",
+  ac_dc_bounce: "AC/DC Bounce",
+  funk_skip: "Funk Skip",
+  sparse_hook: "Sparse Hook",
+  laid_answer: "Laid-Back Answer",
+};
+
+export const FEEL_DISPLAY_NAMES: Record<string, string> = {
+  driving: "Driving",
+  heavy: "Heavy",
+  bouncy: "Bouncy",
+  laid_back: "Laid Back",
+};
+
+export const ROLE_HINTS: Record<string, string> = {
+  root: "home base",
+  b3: "the dark color",
+  "4": "suspended tension",
+  "5": "the anchor",
+  b7: "blues yearning",
+  blue: "pure grit",
+};
+
+const PHRASE_SUMMARIES: Record<string, string> = {
+  "AA'AB": "The phrase states a hook, varies it, restates it, then answers.",
+  AABA: "The hook opens, repeats, detours, then comes home.",
+  ABAB: "A call-and-response conversation between two ideas.",
+  AAAB: "Three repetitions build tension before a final break.",
+};
+
+export function snakeCaseToTitle(s: string): string {
+  return s
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function buildRiffSummary(riff: RiffSpec): string {
+  const barCount = riff.bars.length;
+  const scaleName = riff.scale.replace(/_/g, " ").replace("+blue", " + blue");
+  const feelClause = riff.feel
+    ? ` with a ${(FEEL_DISPLAY_NAMES[riff.feel] ?? riff.feel).toLowerCase()} feel`
+    : "";
+  const phraseSentence = PHRASE_SUMMARIES[riff.motif_structure] ?? "";
+  return `A ${barCount}-bar riff in ${riff.key} ${scaleName}${feelClause}.${phraseSentence ? ` ${phraseSentence}` : ""}`;
+}

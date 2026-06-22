@@ -14,7 +14,7 @@ import { AudioEngine, useAudioEngine } from "../../audio/AudioEngine";
 import { RiffTabView } from "../../components/RiffTabView";
 import { PHRASE_LABELS } from "../../engine/riff/display";
 import { RiffSpec } from "../../engine/riff/spec";
-import { riffSpecToEvents } from "../../engine/riff/toEvents";
+import { riffSpecToEvents, stripTechniques } from "../../engine/riff/toEvents";
 import { useNewRiffStore } from "../../store/useNewRiffStore";
 import { borderRadius, colors, spacing } from "../../theme/colors";
 
@@ -138,6 +138,8 @@ interface SheetProps {
 
 function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const showEmbellishments = useNewRiffStore((s) => s.showEmbellishments);
+  const toggleEmbellishments = useNewRiffStore((s) => s.toggleEmbellishments);
 
   const audioEngine = useAudioEngine({
     onPlaybackStart: () => setIsPlaying(true),
@@ -153,8 +155,12 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
       audioEngine.stop();
       return;
     }
-    audioEngine.play(riffSpecToEvents(riff), riff.tempo_bpm);
-  }, [riff, isPlaying, audioEngine]);
+    const events = riffSpecToEvents(riff);
+    audioEngine.play(
+      showEmbellishments ? events : stripTechniques(events),
+      riff.tempo_bpm,
+    );
+  }, [riff, isPlaying, audioEngine, showEmbellishments]);
 
   return (
     <SafeAreaView style={styles.sheet}>
@@ -177,6 +183,8 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
       >
         <RiffTabView
           riff={riff}
+          showEmbellishments={showEmbellishments}
+          onToggleEmbellishments={toggleEmbellishments}
           footer={
             <View style={styles.sheetControls}>
               <TouchableOpacity

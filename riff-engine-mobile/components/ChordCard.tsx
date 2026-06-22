@@ -35,8 +35,8 @@ interface MiniFretboardProps {
 
 function MiniFretboard({ chordId, strumKey, accentColor }: MiniFretboardProps) {
   const shape = getChordShape(chordId);
-  const maxFret = Math.max(...shape.map((n) => n.fret), 3);
-  const fretCount = Math.min(maxFret + 1, 5);
+  // Fixed 5 frets so every card is the same height (matches Bm, which has fret 4).
+  const fretCount = 5;
   const height = fretCount * FRET_SPACING + FRET_OFFSET + 4;
 
   // One animated value per note in shape (up to 6)
@@ -560,6 +560,7 @@ const cardStyles = StyleSheet.create({
   },
   cardInner: {
     width: '100%',
+    paddingBottom: spacing.md,
   },
   topBar: {
     height: 4,

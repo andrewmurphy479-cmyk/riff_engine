@@ -8,7 +8,7 @@ import Svg, {
   Rect,
   Text as SvgText,
 } from "react-native-svg";
-import { ROLE_COLORS, ROLE_ORDER } from "../engine/riff/display";
+import { ROLE_COLORS, ROLE_HINTS, ROLE_ORDER } from "../engine/riff/display";
 import { MAX_FRET, midiAt } from "../engine/riff/fretboard";
 import { roleOf } from "../engine/riff/scale";
 import { Bar } from "../engine/riff/spec";
@@ -17,9 +17,9 @@ import { colors, spacing } from "../theme/colors";
 const STRING_COUNT = 6;
 const STRING_GAP = 40;
 const FRET_HEIGHT = 44;
-const LEFT_MARGIN = 36;
+const LEFT_MARGIN = 46;
 const TOP_MARGIN = 40;
-const RIGHT_MARGIN = 12;
+const RIGHT_MARGIN = 24;
 const BOTTOM_MARGIN = 16;
 
 const FRET_MARKERS = [3, 5, 7, 9];
@@ -269,6 +269,8 @@ interface Props {
   maxFret?: number;
   showScaleShape: boolean;
   showNoteNames: boolean;
+  showSequence?: boolean;
+  activeStep?: number | null;
 }
 
 export function RiffFretboardView({
@@ -278,6 +280,8 @@ export function RiffFretboardView({
   maxFret = MAX_FRET,
   showScaleShape,
   showNoteNames,
+  showSequence = false,
+  activeStep = null,
 }: Props) {
   const boardWidth = (STRING_COUNT - 1) * STRING_GAP;
   const boardHeight = (maxFret + 1) * FRET_HEIGHT;
@@ -307,6 +311,41 @@ export function RiffFretboardView({
     return s;
   }, [bar, keyName, includeBlue]);
 
+  // Step → ordinal (1-indexed). Notes sharing a step (chords) share an ordinal.
+  const stepOrdinals = useMemo(() => {
+    const visibleSteps = new Set<number>();
+    for (const n of bar.notes) {
+      if (n.fret <= maxFret) visibleSteps.add(n.step);
+    }
+    const sorted = Array.from(visibleSteps).sort((a, b) => a - b);
+    const map = new Map<number, number>();
+    sorted.forEach((step, i) => map.set(step, i + 1));
+    return map;
+  }, [bar, maxFret]);
+
+  // One anchor point per step (centroid of its notes) for the path line.
+  const pathAnchors = useMemo(() => {
+    const byStep = new Map<number, { sx: number; sy: number; count: number }>();
+    for (const n of bar.notes) {
+      if (n.fret > maxFret) continue;
+      const entry = byStep.get(n.step) ?? { sx: 0, sy: 0, count: 0 };
+      entry.sx += stringX(n.string);
+      entry.sy += fretY(n.fret);
+      entry.count += 1;
+      byStep.set(n.step, entry);
+    }
+    return Array.from(byStep.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, v]) => ({ x: v.sx / v.count, y: v.sy / v.count }));
+  }, [bar, maxFret]);
+
+  const pathD = useMemo(() => {
+    if (pathAnchors.length < 2) return null;
+    return pathAnchors
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+      .join(" ");
+  }, [pathAnchors]);
+
   return (
     <View style={styles.container}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -315,7 +354,7 @@ export function RiffFretboardView({
 
           {/* Scale-shape overlay — ghost dots at every pool position */}
           {showScaleShape && (
-            <G opacity={0.35}>
+            <G opacity={0.2}>
               {scalePositions.map(({ stringIdx, fret, role }) => {
                 const key = `${stringIdx}-${fret}`;
                 if (playedKeys.has(key)) return null;
@@ -324,12 +363,12 @@ export function RiffFretboardView({
                 const color = ROLE_COLORS[role] ?? ROLE_COLORS["?"];
                 return (
                   <G key={`scale-${key}`}>
-                    <Circle cx={cx} cy={cy} r={6} fill={color} />
+                    <Circle cx={cx} cy={cy} r={5} fill={color} />
                     {showNoteNames && (
                       <SvgText
                         x={cx}
                         y={cy + 3}
-                        fill="rgba(255,255,255,0.85)"
+                        fill="rgba(255,255,255,0.7)"
                         fontSize={7}
                         fontWeight="600"
                         textAnchor="middle"
@@ -343,7 +382,19 @@ export function RiffFretboardView({
             </G>
           )}
 
-          {/* Played notes — role-colored with glow */}
+          {/* Sequence path — dashed line through step anchors in play order */}
+          {showSequence && pathD && (
+            <Path
+              d={pathD}
+              fill="none"
+              stroke="rgba(255,255,255,0.45)"
+              strokeWidth={1.4}
+              strokeDasharray="4 4"
+              strokeLinecap="round"
+            />
+          )}
+
+          {/* Played notes — role-colored with glow + white ring */}
           {bar.notes.map((note, i) => {
             if (note.fret > maxFret) return null;
             const cx = stringX(note.string);
@@ -354,10 +405,28 @@ export function RiffFretboardView({
             const label = showNoteNames
               ? pitchClassName(midi)
               : String(note.fret);
+            const isActive = activeStep != null && note.step === activeStep;
             return (
               <G key={`played-${i}`}>
-                <Circle cx={cx} cy={cy} r={16} fill={color} opacity={0.18} />
-                <Circle cx={cx} cy={cy} r={11} fill={color} opacity={0.85} />
+                {isActive && (
+                  <Circle cx={cx} cy={cy} r={26} fill={color} opacity={0.35} />
+                )}
+                <Circle
+                  cx={cx}
+                  cy={cy}
+                  r={isActive ? 20 : 18}
+                  fill={color}
+                  opacity={isActive ? 0.3 : 0.15}
+                />
+                <Circle
+                  cx={cx}
+                  cy={cy}
+                  r={isActive ? 13 : 12}
+                  fill={color}
+                  opacity={isActive ? 1 : 0.9}
+                  stroke={isActive ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.55)"}
+                  strokeWidth={isActive ? 2.2 : 1.5}
+                />
                 <SvgText
                   x={cx}
                   y={cy + 3.5}
@@ -371,6 +440,38 @@ export function RiffFretboardView({
               </G>
             );
           })}
+
+          {/* Sequence badges — ordinal of each step, shared across chord notes */}
+          {showSequence &&
+            bar.notes.map((note, i) => {
+              if (note.fret > maxFret) return null;
+              const ordinal = stepOrdinals.get(note.step);
+              if (ordinal == null) return null;
+              const cx = stringX(note.string) + 11;
+              const cy = fretY(note.fret) - 11;
+              return (
+                <G key={`seq-${i}`}>
+                  <Circle
+                    cx={cx}
+                    cy={cy}
+                    r={7}
+                    fill="#FFFFFF"
+                    stroke="rgba(0,0,0,0.6)"
+                    strokeWidth={0.8}
+                  />
+                  <SvgText
+                    x={cx}
+                    y={cy + 3}
+                    fill="#0B0B0F"
+                    fontSize={9}
+                    fontWeight="800"
+                    textAnchor="middle"
+                  >
+                    {ordinal}
+                  </SvgText>
+                </G>
+              );
+            })}
         </Svg>
       </ScrollView>
 
@@ -380,7 +481,10 @@ export function RiffFretboardView({
             <View
               style={[styles.legendDot, { backgroundColor: ROLE_COLORS[role] }]}
             />
-            <Text style={styles.legendLabel}>{role}</Text>
+            <Text style={styles.legendLabel}>
+              {role}
+              {ROLE_HINTS[role] ? ` \u00B7 ${ROLE_HINTS[role]}` : ""}
+            </Text>
           </View>
         ))}
       </View>

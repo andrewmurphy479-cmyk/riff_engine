@@ -1,5 +1,14 @@
-import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useMemo, useState } from "react";
+import {
+  LayoutAnimation,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  UIManager,
+  View,
+} from "react-native";
 import {
   PHRASE_NARRATIVES,
   RHYTHM_DESCRIPTIONS,
@@ -12,6 +21,13 @@ import { midiAt } from "../engine/riff/fretboard";
 import { roleOf } from "../engine/riff/scale";
 import { RiffSpec } from "../engine/riff/spec";
 import { colors, spacing } from "../theme/colors";
+
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface Props {
   riff: RiffSpec;
@@ -39,7 +55,7 @@ export function RiffContextCard({ riff, currentBarIndex }: Props) {
 
   return (
     <View style={styles.card}>
-      <Section title="Scale">
+      <Section title="Scale" defaultOpen>
         {scaleDesc ? (
           <Text style={styles.body}>{scaleDesc}</Text>
         ) : (
@@ -90,14 +106,34 @@ export function RiffContextCard({ riff, currentBarIndex }: Props) {
 function Section({
   title,
   children,
+  defaultOpen = false,
 }: {
   title: string;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const toggle = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen((v) => !v);
+  };
+
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
-      {children}
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={toggle}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
+        <Ionicons
+          name={open ? "chevron-up" : "chevron-down"}
+          size={14}
+          color={colors.accent}
+        />
+      </TouchableOpacity>
+      {open && children}
     </View>
   );
 }
@@ -115,6 +151,11 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: 6,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   sectionTitle: {
     color: colors.accent,

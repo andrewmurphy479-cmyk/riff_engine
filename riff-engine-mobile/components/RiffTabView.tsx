@@ -9,8 +9,15 @@ import {
 } from "../engine/riff/display";
 import { midiAt } from "../engine/riff/fretboard";
 import { roleOf } from "../engine/riff/scale";
-import { RiffSpec } from "../engine/riff/spec";
+import { RiffSpec, Technique } from "../engine/riff/spec";
 import { colors, spacing } from "../theme/colors";
+
+const TECHNIQUE_GLYPH: Partial<Record<Technique, string>> = {
+  hammer: "H",
+  pull: "P",
+  bend: "^",
+  mute: "x",
+};
 
 const STRING_LABELS_HIGH_TO_LOW = ["e", "B", "G", "D", "A", "E"] as const;
 const STRING_COUNT = 6;
@@ -31,9 +38,17 @@ interface Props {
   riff: RiffSpec;
   footer?: React.ReactNode;
   onBarTap?: (barIdx: number) => void;
+  showEmbellishments?: boolean;
+  onToggleEmbellishments?: () => void;
 }
 
-export function RiffTabView({ riff, footer, onBarTap }: Props) {
+export function RiffTabView({
+  riff,
+  footer,
+  onBarTap,
+  showEmbellishments = true,
+  onToggleEmbellishments,
+}: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
 
   const includeBlue = riff.scale.includes("blue");
@@ -204,6 +219,9 @@ export function RiffTabView({ riff, footer, onBarTap }: Props) {
 
                     const text = String(note.fret);
                     const tw = text.length > 1 ? 13 : 10;
+                    const glyph = showEmbellishments
+                      ? TECHNIQUE_GLYPH[note.technique]
+                      : undefined;
 
                     return (
                       <G key={`n-${barStart + bOffset}-${nIdx}`}>
@@ -226,6 +244,19 @@ export function RiffTabView({ riff, footer, onBarTap }: Props) {
                         >
                           {text}
                         </SvgText>
+                        {glyph && (
+                          <SvgText
+                            x={x}
+                            y={y - 9}
+                            fill="rgba(255,255,255,0.75)"
+                            fontSize={8}
+                            fontWeight="700"
+                            textAnchor="middle"
+                            fontFamily="monospace"
+                          >
+                            {glyph}
+                          </SvgText>
+                        )}
                       </G>
                     );
                   }),
@@ -236,19 +267,36 @@ export function RiffTabView({ riff, footer, onBarTap }: Props) {
         </Svg>
       </View>
 
-      {visibleRoles.length > 0 && (
+      {(visibleRoles.length > 0 || onToggleEmbellishments) && (
         <View style={styles.legendWrap}>
-          <TouchableOpacity
-            style={styles.legendToggle}
-            onPress={() => setLegendOpen((v) => !v)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.legendToggleLabel}>
-              {legendOpen ? "Hide legend" : "Show legend"}
-            </Text>
-            <Text style={styles.legendChevron}>{legendOpen ? "▾" : "▸"}</Text>
-          </TouchableOpacity>
-          {legendOpen && (
+          <View style={styles.legendToggleRow}>
+            {visibleRoles.length > 0 ? (
+              <TouchableOpacity
+                style={styles.legendToggle}
+                onPress={() => setLegendOpen((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.legendToggleLabel}>
+                  {legendOpen ? "Hide legend" : "Show legend"}
+                </Text>
+                <Text style={styles.legendChevron}>{legendOpen ? "▾" : "▸"}</Text>
+              </TouchableOpacity>
+            ) : (
+              <View />
+            )}
+            {onToggleEmbellishments && (
+              <TouchableOpacity
+                style={styles.legendToggle}
+                onPress={onToggleEmbellishments}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.legendToggleLabel}>
+                  {showEmbellishments ? "Embellishments ✓" : "Embellishments"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {legendOpen && visibleRoles.length > 0 && (
             <View style={styles.legend}>
               {visibleRoles.map((role) => (
                 <View key={role} style={styles.legendItem}>
@@ -314,6 +362,11 @@ const styles = StyleSheet.create({
   legendWrap: {
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  legendToggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   legendToggle: {
     flexDirection: "row",

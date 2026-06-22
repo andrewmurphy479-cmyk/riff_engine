@@ -1,6 +1,11 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { SCALE_PRETTY } from "../engine/riff/display";
+import {
+  FEEL_DISPLAY_NAMES,
+  RHYTHM_DISPLAY_NAMES,
+  SCALE_PRETTY,
+  snakeCaseToTitle,
+} from "../engine/riff/display";
 import { RiffSpec } from "../engine/riff/spec";
 import { spacing } from "../theme/colors";
 import { MetaPair } from "./ui/MetaPair";
@@ -23,9 +28,17 @@ export function RiffBarMetaStrip({ riff, currentBarIndex, phraseTag }: Props) {
       <View style={styles.grid}>
         <MetaPair label="Key" value={`${riff.key} ${scalePretty}`} />
         <MetaPair label="Tempo" value={`${riff.tempo_bpm} BPM`} />
-        {riff.feel && <MetaPair label="Feel" value={riff.feel} />}
+        {riff.feel && (
+          <MetaPair
+            label="Feel"
+            value={FEEL_DISPLAY_NAMES[riff.feel] ?? snakeCaseToTitle(riff.feel)}
+          />
+        )}
         {riff.rhythm_name && (
-          <MetaPair label="Rhythm" value={riff.rhythm_name} />
+          <MetaPair
+            label="Rhythm"
+            value={RHYTHM_DISPLAY_NAMES[riff.rhythm_name] ?? snakeCaseToTitle(riff.rhythm_name)}
+          />
         )}
         <MetaPair
           label="Bar"
