@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { generate } from "../engine/riff/generate";
+import { generateSafe } from "../engine/riff/generate";
 import { Feel, Level } from "../engine/riff/rhythm";
 import { RiffSpec } from "../engine/riff/spec";
 
@@ -82,7 +82,7 @@ export const useNewRiffStore = create<NewRiffState>()(
         set({
           key: nextKey,
           feel: nextFeel,
-          currentRiff: generate({
+          currentRiff: generateSafe({
             key: nextKey,
             feel: nextFeel,
             level,
@@ -96,7 +96,7 @@ export const useNewRiffStore = create<NewRiffState>()(
         if (barIdx < 0 || barIdx >= currentRiff.bars.length) return;
         // Bar re-roll preserves the current key regardless of lock — user is
         // targeting this bar, not the whole riff's identity.
-        const freshRiff = generate({ key, feel, level });
+        const freshRiff = generateSafe({ key, feel, level });
         if (barIdx >= freshRiff.bars.length) return;
         const newBars = currentRiff.bars.map((bar, i) =>
           i === barIdx ? freshRiff.bars[barIdx] : bar,
@@ -109,7 +109,7 @@ export const useNewRiffStore = create<NewRiffState>()(
         set({
           key,
           lockedFields: { ...lockedFields, key: true },
-          currentRiff: generate({ key, feel, level }),
+          currentRiff: generateSafe({ key, feel, level }),
         });
       },
 
@@ -118,7 +118,7 @@ export const useNewRiffStore = create<NewRiffState>()(
         set({
           feel,
           lockedFields: { ...lockedFields, feel: feel !== null },
-          currentRiff: generate({ key, feel, level }),
+          currentRiff: generateSafe({ key, feel, level }),
         });
       },
 
@@ -126,7 +126,7 @@ export const useNewRiffStore = create<NewRiffState>()(
         const { key, feel } = get();
         set({
           level,
-          currentRiff: generate({ key, feel, level }),
+          currentRiff: generateSafe({ key, feel, level }),
         });
       },
 

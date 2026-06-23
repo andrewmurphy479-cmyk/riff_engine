@@ -119,3 +119,29 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
       `(seed=${seed}); rules may be over-constrained`,
   );
 }
+
+/**
+ * Crash-proof wrapper around {@link generate}. A single call can throw when a
+ * key/feel/level combo is over-constrained and it exhausts its attempts. Each
+ * call uses a fresh random seed, so this retries — and progressively relaxes
+ * feel, then key — until it gets a playable riff, guaranteeing a RiffSpec.
+ *
+ * Use this anywhere a throw would reach the UI (generation on user actions).
+ */
+export function generateSafe(opts: GenerateOptions = {}): RiffSpec {
+  const plans: GenerateOptions[] = [
+    { ...opts, max_attempts: opts.max_attempts ?? 30 },
+    { ...opts, seed: null, max_attempts: 30 }, // fresh seed, same constraints
+    { ...opts, seed: null, feel: null, max_attempts: 30 }, // drop feel
+    { ...opts, seed: null, feel: null, key: undefined, max_attempts: 50 }, // drop key too
+  ];
+  for (const plan of plans) {
+    try {
+      return generate(plan);
+    } catch {
+      // fall through to the next, more relaxed plan
+    }
+  }
+  // Last resort: the most permissive call possible.
+  return generate({ max_attempts: 100 });
+}

@@ -1,13 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../theme/colors';
 import RiffologyLoadingScreen from '../components/RiffologyLoadingScreen';
+import { usePracticeStore } from '../store/usePracticeStore';
+
+/** Track when the persisted practice store has finished rehydrating. */
+function usePracticeHydrated() {
+  const [hydrated, setHydrated] = useState(() =>
+    usePracticeStore.persist.hasHydrated(),
+  );
+  useEffect(() => {
+    const unsub = usePracticeStore.persist.onFinishHydration(() =>
+      setHydrated(true),
+    );
+    setHydrated(usePracticeStore.persist.hasHydrated());
+    return unsub;
+  }, []);
+  return hydrated;
+}
 
 export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
+  const hydrated = usePracticeHydrated();
+  const onboardingComplete = usePracticeStore((s) => s.onboardingComplete);
 
-  if (isLoading) {
+  // Hold the splash until both the intro timer and store hydration are done,
+  // so returning users never flash the onboarding screen.
+  if (isLoading || !hydrated) {
     return (
       <>
         <StatusBar style="light" />
@@ -34,17 +54,18 @@ export default function RootLayout() {
           headerShadowVisible: false,
         }}
       >
-        <Stack.Screen
-          name="(tabs)"
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="presets"
-          options={{
-            title: 'Presets',
-            presentation: 'modal',
-          }}
-        />
+        <Stack.Protected guard={onboardingComplete}>
+          <Stack.Screen
+            name="(tabs)"
+            options={{ headerShown: false }}
+          />
+        </Stack.Protected>
+        <Stack.Protected guard={!onboardingComplete}>
+          <Stack.Screen
+            name="onboarding"
+            options={{ headerShown: false }}
+          />
+        </Stack.Protected>
       </Stack>
     </>
   );

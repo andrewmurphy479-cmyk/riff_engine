@@ -2,6 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { colors } from '../../theme/colors';
 
+export const unstable_settings = {
+  initialRouteName: 'today',
+};
+
 export default function TabsLayout() {
   return (
     <Tabs
@@ -23,6 +27,16 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.textMuted,
       }}
     >
+      <Tabs.Screen
+        name="today"
+        options={{
+          title: 'Today',
+          tabBarLabel: 'Today',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="today-outline" size={size} color={color} />
+          ),
+        }}
+      />
       <Tabs.Screen
         name="index"
         options={{
