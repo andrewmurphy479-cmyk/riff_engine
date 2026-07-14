@@ -18,7 +18,19 @@
       "Bash(npm view:*)",
       "WebFetch(domain:freesound.org)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(git commit:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; Write-Host ''Done''\")",
+      "Bash(git push:*)",
+      "WebFetch(domain:chatgpt.com)",
+      "Bash(tasklist)",
+      "Bash(node -e:*)",
+      "Bash(git *)",
+      "Bash(rm *)"
     ]
   }
 }

@@ -1,10 +1,10 @@
 import { assignPositions, passesStretchCheck } from "./playability";
-import { Feel, Level, pickTemplate } from "./rhythm";
+import { Feel, FEEL_DYNAMICS, Level, pickTemplate } from "./rhythm";
 import { Rng } from "./rng";
 import { notePool } from "./scale";
 import { Bar, Note, RiffSpec } from "./spec";
 import { buildPhrase } from "./structure";
-import { tagTechniques } from "./techniques";
+import { tagMutes, tagTechniques } from "./techniques";
 
 const DEFAULT_KEY = "E";
 const DEFAULT_TEMPO = 110;
@@ -12,11 +12,27 @@ const DEFAULT_LOW_MIDI = 40;
 const DEFAULT_HIGH_MIDI = 64;
 const DEFAULT_LEVEL: Level = "intermediate";
 
-const LEVEL_STRETCH_LIMIT: Record<Level, number> = {
+export const LEVEL_STRETCH_LIMIT: Record<Level, number> = {
   beginner: 3,
   intermediate: 4,
   advanced: 5,
 };
+
+// Chance that a non-pedal heavy/driving riff gets the palm-mute chug
+// treatment (pedal templates always do).
+const MUTE_CHANCE: Record<Feel, number> = {
+  driving: 0.35,
+  heavy: 0.6,
+  bouncy: 0,
+  laid_back: 0,
+};
+
+// Per-note velocity humanization: +/- this many MIDI velocity units.
+const VELOCITY_JITTER = 3;
+
+function clampVelocity(v: number): number {
+  return Math.max(1, Math.min(127, v));
+}
 
 // Chance of blue notes when level permits and include_blue isn't explicit.
 const LEVEL_BLUE_CHANCE: Record<Level, number> = {
@@ -82,18 +98,28 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
     }
     if (!passesStretchCheck(path, stretchLimit)) continue;
 
+    const accentSet = new Set(template.accents ?? [0]);
+    const ghostSet = new Set(template.ghosts ?? []);
+    const dynamics = FEEL_DYNAMICS[template.feel];
+
     const bars: Bar[] = [];
     let k = 0;
     for (const barSteps of phrase) {
       const notes: Note[] = [];
       for (const s of barSteps) {
         const [stringIdx, fret] = path[k];
+        const base = accentSet.has(s.step)
+          ? dynamics.accent
+          : ghostSet.has(s.step)
+            ? dynamics.ghost
+            : dynamics.normal;
+        const jitter = rng.randrange(VELOCITY_JITTER * 2 + 1) - VELOCITY_JITTER;
         notes.push({
           step: s.step,
           duration: s.duration,
           string: stringIdx,
           fret,
-          velocity: 96,
+          velocity: clampVelocity(base + jitter),
           technique: "pluck",
         });
         k++;
@@ -101,12 +127,18 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
       bars.push({ notes });
     }
 
+    let tagged = tagTechniques(bars);
+    const muteRoll = rng.random();
+    if (template.pedal || muteRoll < MUTE_CHANCE[template.feel]) {
+      tagged = tagMutes(tagged, accentSet);
+    }
+
     return {
       key,
       scale: "minor_pentatonic" + (include_blue ? "+blue" : ""),
       tempo_bpm,
       time_sig: [4, 4],
-      bars: tagTechniques(bars),
+      bars: tagged,
       motif_structure: "AA'AB",
       seed,
       rhythm_name: template.name,
@@ -142,6 +174,7 @@ export function generateSafe(opts: GenerateOptions = {}): RiffSpec {
       // fall through to the next, more relaxed plan
     }
   }
-  // Last resort: the most permissive call possible.
-  return generate({ max_attempts: 100 });
+  // Last resort: the most permissive call possible — but keep the level;
+  // its stretch/density caps are a promise to the player, never relaxed.
+  return generate({ level: opts.level, max_attempts: 100 });
 }

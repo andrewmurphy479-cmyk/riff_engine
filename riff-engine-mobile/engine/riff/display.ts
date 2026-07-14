@@ -63,6 +63,16 @@ export const RHYTHM_DESCRIPTIONS: Record<string, string> = {
     "Just three notes across the whole bar. Minimal, confident, and memorable — leaves enormous space around each hit. The riff is what you don't play.",
   laid_answer:
     "Two long notes, then a short answer phrase at the end. Relaxed and conversational — states an idea and lets it breathe before replying.",
+  highway_chug:
+    "Relentless palm-muted eighths on the low string with accented stabs punching through. The engine-room chug of hard rock — head-nod guaranteed.",
+  gallop_drive:
+    "A galloping pedal tone hammering the low string — eighth plus two sixteenths, over and over. Pure Iron Maiden propulsion.",
+  doom_chug:
+    "Slow palm-muted chugs building into long, ringing accent hits. Doom's heavy artillery — patient, crushing, inevitable.",
+  thunder_gallop:
+    "Long bombs on the downbeats split by galloped sixteenths. Thunder, then hooves — half-time weight with double-time urgency.",
+  porch_swing:
+    "Five easy hits with a lazy off-beat lean. Front-porch bounce — all the swagger, none of the hurry.",
 };
 
 export const ROLE_NARRATIVES: Record<string, string> = {
@@ -85,6 +95,11 @@ export const RHYTHM_DISPLAY_NAMES: Record<string, string> = {
   funk_skip: "Funk Skip",
   sparse_hook: "Sparse Hook",
   laid_answer: "Laid-Back Answer",
+  highway_chug: "Highway Chug",
+  gallop_drive: "Gallop Drive",
+  doom_chug: "Doom Chug",
+  thunder_gallop: "Thunder Gallop",
+  porch_swing: "Porch Swing",
 };
 
 export const FEEL_DISPLAY_NAMES: Record<string, string> = {

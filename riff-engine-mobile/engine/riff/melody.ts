@@ -16,6 +16,9 @@ export function fillMelody(
   rng: Rng,
   opts: FillMelodyOptions = {},
 ): PitchedStep[] {
+  if (template.pedal) {
+    return fillPedal(template, pool, rng, opts);
+  }
   const { startingMidi = null, endingRule = null, anchorMidi = null } = opts;
   const poolSorted: PoolEntry[] = [...pool].sort((a, b) => a[0] - b[0]);
   const poolMidis = poolSorted.map(([m]) => m);
@@ -45,6 +48,43 @@ export function fillMelody(
     steps.push({ step, duration, midi });
   }
 
+  return steps;
+}
+
+/**
+ * Pedal-tone fill: unaccented steps chug the lowest root in the pool; accented
+ * steps stab a color note (non-root within the octave above the pedal). The
+ * repeated pedal IS the riff's identity, so contour rules don't apply here.
+ */
+function fillPedal(
+  template: RhythmTemplate,
+  pool: readonly PoolEntry[],
+  rng: Rng,
+  opts: FillMelodyOptions = {},
+): PitchedStep[] {
+  const { endingRule = null } = opts;
+  const poolSorted: PoolEntry[] = [...pool].sort((a, b) => a[0] - b[0]);
+  const lowestRoot = poolSorted.find(([, role]) => role === "root");
+  const pedalMidi = lowestRoot ? lowestRoot[0] : poolSorted[0][0];
+  const colors = poolSorted.filter(
+    ([m, role]) => m > pedalMidi && m <= pedalMidi + 12 && role !== "root",
+  );
+  const accentSet = new Set(template.accents ?? []);
+
+  const steps: PitchedStep[] = [];
+  const noteCount = template.steps.length;
+  for (let i = 0; i < noteCount; i++) {
+    const [step, duration] = template.steps[i];
+    let midi = pedalMidi;
+    if (accentSet.has(step) && colors.length > 0) {
+      midi = rng.choice(colors)[0];
+    }
+    // Resolution always lands back on the pedal, even on an accented step.
+    if (i === noteCount - 1 && endingRule === "root") {
+      midi = pedalMidi;
+    }
+    steps.push({ step, duration, midi });
+  }
   return steps;
 }
 
