@@ -64,7 +64,8 @@ export function RiffTabView({
     .replace(/_/g, " ")
     .replace("+blue", " + blue");
   const intervalHint = SCALE_PRETTY[riff.scale];
-  const notesPerBar = riff.bars[0]?.notes.length ?? 0;
+  // Distinct steps, not raw note count — a diad is one hit, two notes.
+  const notesPerBar = new Set(riff.bars[0]?.notes.map((n) => n.step) ?? []).size;
 
   const metaBits: string[] = [`${riff.tempo_bpm} BPM`];
   if (riff.rhythm_name) metaBits.push(riff.rhythm_name);

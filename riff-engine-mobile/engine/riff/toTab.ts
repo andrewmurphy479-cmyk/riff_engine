@@ -100,7 +100,8 @@ export function renderTab(riff: RiffSpec, title?: string): string {
   const phraseTags =
     PHRASE_LABELS[riff.motif_structure] ?? riff.bars.map(() => "?");
   const phraseStory = PHRASE_NARRATIVES[riff.motif_structure] ?? "";
-  const notesPerBar = riff.bars[0]?.notes.length ?? 0;
+  // Distinct steps, not raw note count — a diad is one hit, two notes.
+  const notesPerBar = new Set(riff.bars[0]?.notes.map((n) => n.step) ?? []).size;
 
   const lines: string[] = [];
   lines.push("=".repeat(SECTION_WIDTH));

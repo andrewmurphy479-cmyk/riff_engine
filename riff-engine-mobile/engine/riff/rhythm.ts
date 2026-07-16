@@ -17,6 +17,11 @@ export interface RhythmTemplate {
    * stab color notes. Melody fill and mutation treat these bars specially.
    */
   pedal?: boolean;
+  /**
+   * Swung template: playback delays off-beat 8ths to ~57-62% of the beat
+   * (ratio seeded per riff). Only meaningful for templates without 16ths.
+   */
+  swing?: boolean;
 }
 
 /** Per-feel dynamic profile, in MIDI velocity (1-127). Values are chosen to
@@ -102,6 +107,27 @@ export const RHYTHM_LIBRARY: readonly RhythmTemplate[] = [
     pedal: true,
   },
   {
+    name: "rest_on_one",
+    feel: "driving",
+    // The hard-rock trick: beat 1 is silent, the riff slams in on the "and".
+    steps: [[2, 2], [4, 2], [6, 2], [8, 2], [12, 2]],
+    accents: [4, 12],
+  },
+  {
+    name: "redline_push",
+    feel: "driving",
+    // Straight drive with an anticipated hit pushing into the next bar.
+    steps: [[0, 2], [4, 2], [8, 2], [10, 2], [14, 2]],
+    accents: [0, 14],
+  },
+  {
+    name: "overdrive_8ths",
+    feel: "driving",
+    steps: [[0, 2], [2, 2], [4, 2], [6, 2], [8, 2], [12, 2], [14, 2]],
+    accents: [0, 8, 12],
+    ghosts: [2, 6],
+  },
+  {
     name: "sabbath_space",
     feel: "heavy",
     steps: [[0, 4], [6, 2], [10, 2], [14, 2]],
@@ -132,6 +158,33 @@ export const RHYTHM_LIBRARY: readonly RhythmTemplate[] = [
     pedal: true,
   },
   {
+    name: "sludge_stomp",
+    feel: "heavy",
+    steps: [[0, 4], [6, 2], [8, 4], [14, 2]],
+    accents: [0, 8],
+    ghosts: [14],
+  },
+  {
+    name: "war_march",
+    feel: "heavy",
+    // Beginner-reachable pedal chug: paired 8ths marching in half-bar cells.
+    steps: [[0, 2], [2, 2], [4, 2], [8, 2], [10, 2], [12, 2]],
+    accents: [4, 12],
+    pedal: true,
+  },
+  {
+    name: "full_gallop",
+    feel: "heavy",
+    // Wall-to-wall gallop cells ending on a long bomb. Intermediate+.
+    steps: [
+      [0, 1], [1, 1], [2, 2], [4, 1], [5, 1], [6, 2],
+      [8, 1], [9, 1], [10, 2], [12, 4],
+    ],
+    accents: [2, 12],
+    ghosts: [1, 5, 9],
+    pedal: true,
+  },
+  {
     name: "ac_dc_bounce",
     feel: "bouncy",
     steps: [[0, 2], [4, 2], [8, 2], [10, 2], [12, 2]],
@@ -151,6 +204,29 @@ export const RHYTHM_LIBRARY: readonly RhythmTemplate[] = [
     accents: [0, 6],
   },
   {
+    name: "two_step",
+    feel: "bouncy",
+    steps: [[0, 2], [4, 2], [6, 2], [12, 2]],
+    accents: [0, 6],
+    swing: true,
+  },
+  {
+    name: "offbeat_strut",
+    feel: "bouncy",
+    // Rest on 1, then strut across the off-beats.
+    steps: [[2, 2], [4, 2], [8, 2], [10, 2], [14, 2]],
+    accents: [2, 10],
+    swing: true,
+  },
+  {
+    name: "shuffle_skip",
+    feel: "bouncy",
+    steps: [[0, 2], [2, 2], [6, 2], [8, 2], [10, 2], [14, 2]],
+    accents: [0, 8],
+    ghosts: [2, 10],
+    swing: true,
+  },
+  {
     name: "sparse_hook",
     feel: "laid_back",
     steps: [[0, 4], [6, 2], [10, 4]],
@@ -161,6 +237,28 @@ export const RHYTHM_LIBRARY: readonly RhythmTemplate[] = [
     feel: "laid_back",
     steps: [[0, 4], [4, 4], [10, 2], [12, 2]],
     accents: [0],
+  },
+  {
+    name: "slow_nod",
+    feel: "laid_back",
+    steps: [[0, 4], [6, 2], [10, 2], [12, 4]],
+    accents: [0, 12],
+    swing: true,
+  },
+  {
+    name: "dusty_stroll",
+    feel: "laid_back",
+    steps: [[0, 2], [4, 4], [10, 2], [14, 2]],
+    accents: [0, 10],
+    ghosts: [14],
+    swing: true,
+  },
+  {
+    name: "midnight_answer",
+    feel: "laid_back",
+    steps: [[0, 2], [2, 2], [4, 4], [10, 2], [12, 2], [14, 2]],
+    accents: [0, 10],
+    ghosts: [2, 14],
   },
 ];
 

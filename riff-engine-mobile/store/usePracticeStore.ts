@@ -102,6 +102,49 @@ export interface PracticeStats {
 
 const SESSION_RIFF_COUNT = 4;
 
+/**
+ * Structural check on a persisted session. Sessions persist full RiffSpec
+ * blobs, so an engine shape change can strand returning users with specs the
+ * app can no longer render. Rather than trusting stored data, anything that
+ * doesn't look like a session the *current* engine could have produced is
+ * discarded and rebuilt (the day's progress is the only loss).
+ */
+export function isValidSession(session: unknown): session is DailySession {
+  if (typeof session !== "object" || session === null) return false;
+  const s = session as Record<string, unknown>;
+  if (typeof s.date !== "string") return false;
+  if (typeof s.goalCount !== "number" || typeof s.credited !== "boolean") {
+    return false;
+  }
+  if (!Array.isArray(s.completed) || !s.completed.every((c) => typeof c === "boolean")) {
+    return false;
+  }
+  if (!Array.isArray(s.riffs) || s.riffs.length === 0) return false;
+  if (s.completed.length !== s.riffs.length) return false;
+  return s.riffs.every((riff) => {
+    if (typeof riff !== "object" || riff === null) return false;
+    const r = riff as Record<string, unknown>;
+    if (typeof r.key !== "string" || typeof r.tempo_bpm !== "number") return false;
+    if (!Array.isArray(r.bars) || r.bars.length === 0) return false;
+    return r.bars.every((bar: unknown) => {
+      if (typeof bar !== "object" || bar === null) return false;
+      const notes = (bar as Record<string, unknown>).notes;
+      if (!Array.isArray(notes)) return false;
+      return notes.every(
+        (n: unknown) =>
+          typeof n === "object" &&
+          n !== null &&
+          typeof (n as Record<string, unknown>).step === "number" &&
+          typeof (n as Record<string, unknown>).duration === "number" &&
+          typeof (n as Record<string, unknown>).string === "number" &&
+          typeof (n as Record<string, unknown>).fret === "number" &&
+          typeof (n as Record<string, unknown>).velocity === "number" &&
+          typeof (n as Record<string, unknown>).technique === "string",
+      );
+    });
+  });
+}
+
 interface PracticeState {
   onboardingComplete: boolean;
   profile: PracticeProfile | null;
@@ -178,7 +221,11 @@ export const usePracticeStore = create<PracticeState>()(
       ensureTodaySession: () => {
         const { profile, session } = get();
         if (!profile) return;
-        if (session && session.date === dayKey()) return;
+        // Rebuild when stale (new day) OR structurally invalid — a session
+        // persisted by an older engine shape must never reach the UI.
+        if (session && session.date === dayKey() && isValidSession(session)) {
+          return;
+        }
         set({ session: buildSession(profile) });
       },
 
@@ -240,7 +287,21 @@ export const usePracticeStore = create<PracticeState>()(
         streak: state.streak,
         stats: state.stats,
       }),
-      version: 1,
+      version: 2,
+      migrate: (persisted: any, version: number) => {
+        // v2: sessions persist engine RiffSpec blobs; validate instead of
+        // trusting them. Profile/streak/stats survive; an unparseable session
+        // is dropped and rebuilt by ensureTodaySession on next launch.
+        if (version < 2) {
+          return {
+            ...persisted,
+            session: isValidSession(persisted?.session)
+              ? persisted.session
+              : null,
+          };
+        }
+        return persisted;
+      },
     },
   ),
 );

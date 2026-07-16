@@ -17,6 +17,7 @@
  * plain text for terminal batch audits.
  */
 import { midiAt } from "./fretboard";
+import { RHYTHM_LIBRARY } from "./rhythm";
 import { roleOf } from "./scale";
 import { RiffSpec } from "./spec";
 
@@ -212,7 +213,7 @@ function computeSubReport(
 /** Pedal chugs are root-heavy by design; skip the tonic-share flag when the
  * batch is dominated by pedal templates so audits don't cry wolf. */
 function isPedalHeavy(rhythmHist: Hist): boolean {
-  const pedalNames = ["highway_chug", "gallop_drive", "doom_chug", "thunder_gallop"];
+  const pedalNames = RHYTHM_LIBRARY.filter((t) => t.pedal).map((t) => t.name);
   const total = [...rhythmHist.values()].reduce((a, b) => a + b, 0);
   if (!total) return false;
   const pedal = pedalNames.reduce((a, n) => a + (rhythmHist.get(n) ?? 0), 0);

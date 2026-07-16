@@ -41,7 +41,9 @@ export function renderEventsToStereo(
   const { reverbMix = 0.15, tailSeconds = 1.2, muteParams, onProgress } = options;
 
   const secondsPerStep = 60 / bpm / STEPS_PER_BEAT;
-  const maxStep = Math.max(...events.map((e) => e.step + e.duration));
+  const maxStep = Math.max(
+    ...events.map((e) => e.step + (e.swingOffset ?? 0) + e.duration),
+  );
   const totalSamples = Math.ceil((maxStep * secondsPerStep + tailSeconds) * SAMPLE_RATE);
 
   const mixL = new Float32Array(totalSamples);
@@ -65,7 +67,9 @@ export function renderEventsToStereo(
     const jitterSamples = Math.round((jitterMs / 1000) * SAMPLE_RATE);
     const startSample = Math.max(
       0,
-      Math.floor(event.step * secondsPerStep * SAMPLE_RATE) + jitterSamples,
+      Math.floor(
+        (event.step + (event.swingOffset ?? 0)) * secondsPerStep * SAMPLE_RATE,
+      ) + jitterSamples,
     );
     const durationMs = event.duration * secondsPerStep * 1000;
 

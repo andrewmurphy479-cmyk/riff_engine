@@ -19,4 +19,10 @@ export interface TabEvent {
   duration: number;
   technique?: Technique;
   velocity?: number;
+  /**
+   * Swing feel: fractional steps to delay this event's onset at playback.
+   * `step` stays on the straight grid (views and playhead sync key off it);
+   * only the audible onset moves. Derived from RiffSpec.swing in toEvents.
+   */
+  swingOffset?: number;
 }

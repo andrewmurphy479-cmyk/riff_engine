@@ -70,7 +70,7 @@ class AudioEngineImpl {
 
     const stepsPerBeat = 4;
     const msPerStep = (60 / bpm / stepsPerBeat) * 1000;
-    const maxStep = Math.max(...events.map(e => e.step + e.duration));
+    const maxStep = Math.max(...events.map(e => e.step + (e.swingOffset ?? 0) + e.duration));
     const totalDurationMs = maxStep * msPerStep;
 
     // Pre-generate all tones ONCE — tones are cached across loop iterations
@@ -111,7 +111,7 @@ class AudioEngineImpl {
       for (const event of events) {
         if (scheduledSteps.has(event.step)) continue;
         scheduledSteps.add(event.step);
-        const delayMs = event.step * msPerStep;
+        const delayMs = (event.step + (event.swingOffset ?? 0)) * msPerStep;
         const jitterMs = stepJitter.get(event.step) ?? 0;
         const humanizedDelay = Math.max(0, delayMs + jitterMs);
         const step = event.step;
@@ -134,7 +134,7 @@ class AudioEngineImpl {
 
     // Schedule each note with grouped jitter + polyphony mixing
     for (const event of events) {
-      const delayMs = event.step * msPerStep;
+      const delayMs = (event.step + (event.swingOffset ?? 0)) * msPerStep;
       const noteDurationMs = event.duration * msPerStep;
       const jitterMs = stepJitter.get(event.step) ?? 0;
 

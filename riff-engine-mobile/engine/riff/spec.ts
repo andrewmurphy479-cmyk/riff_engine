@@ -30,4 +30,9 @@ export interface RiffSpec {
   seed: number;
   rhythm_name: string | null;
   feel: string | null;
+  /**
+   * Swing ratio for playback (0.5 = straight, ~0.57-0.62 = swung 8ths).
+   * Absent on straight riffs and on riffs saved before swing existed.
+   */
+  swing?: number;
 }

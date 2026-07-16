@@ -1,3 +1,4 @@
+import { addDiads } from "./diads";
 import { assignPositions, passesStretchCheck } from "./playability";
 import { Feel, FEEL_DYNAMICS, Level, pickTemplate } from "./rhythm";
 import { Rng } from "./rng";
@@ -29,6 +30,11 @@ const MUTE_CHANCE: Record<Feel, number> = {
 
 // Per-note velocity humanization: +/- this many MIDI velocity units.
 const VELOCITY_JITTER = 3;
+
+// Swung templates delay off-beat 8ths to this fraction of the beat
+// (0.5 = straight). The exact ratio is seeded per riff for variety.
+const SWING_MIN = 0.57;
+const SWING_MAX = 0.62;
 
 function clampVelocity(v: number): number {
   return Math.max(1, Math.min(127, v));
@@ -133,7 +139,21 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
       tagged = tagMutes(tagged, accentSet);
     }
 
-    return {
+    tagged = addDiads(tagged, {
+      rng,
+      feel: template.feel,
+      level,
+      accents: accentSet,
+      stretchLimit,
+      key,
+      includeBlue: include_blue,
+    });
+
+    const swing = template.swing
+      ? SWING_MIN + rng.random() * (SWING_MAX - SWING_MIN)
+      : undefined;
+
+    const spec: RiffSpec = {
       key,
       scale: "minor_pentatonic" + (include_blue ? "+blue" : ""),
       tempo_bpm,
@@ -144,6 +164,8 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
       rhythm_name: template.name,
       feel: template.feel,
     };
+    if (swing !== undefined) spec.swing = swing;
+    return spec;
   }
 
   throw new Error(

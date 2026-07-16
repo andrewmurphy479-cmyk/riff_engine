@@ -55,16 +55,16 @@ Velocity is hardcoded to 96 (`generate.ts:96`) while the synth has **five veloci
 
 ### A3. Power chords / double stops (polyphony)
 Engine is strictly monophonic; **the audio engine already handles simultaneous notes** (polyphony scaling, 12ms strum stagger, one voice per string).
-- [ ] Extend the bar/event model so a step can carry 2 notes (root+5th diad; root+octave).
-- [ ] Emit diads on accented strong beats for `heavy`/`driving`; keep beginner mostly single-note with diads only on bar-ending hits.
-- [ ] Update `RiffTabView`/`RiffFretboardView` to render stacked frets on one step (standard tab notation handles this natively).
-- [ ] Playability: diad shapes are fixed (same-fret or +2-fret across adjacent strings), so validate as a unit in `assignPositions`.
+- [x] Bar model carries 2 notes per step (root+5th diad; root+octave) — `engine/riff/diads.ts` pass after mute tagging.
+- [x] Diads on accented strong beats for `heavy`/`driving` (per-riff seeded roll: heavy 0.85, driving 0.6); beginner gets a single power-chord landing on the riff's final hit; bar 3 always mirrors bar 1's diads so the hook reads identically. Muted roots produce muted diads (chugged power chords).
+- [x] `RiffTabView`/`RiffFretboardView` render stacked frets natively (fretboard already had chord ordinals); notes/bar readouts count hits, not stacked notes.
+- [x] Playability: diad grips are fixed (+2 frets, one/two strings up, 4ths-tuned strings only), validated as a unit — each addition re-runs the full-riff stretch check and is dropped if it breaks the level limit. Harmony notes stay inside the riff's scale (no fifths above the 5/blue degrees).
 
 ### A4. Rhythm template expansion + swing
 10 templates, badly imbalanced (driving 4, bouncy 2 — and a beginner in bouncy has exactly **1**).
-- [ ] Target ~24 templates, min 4–5 per feel *after* the beginner filter.
-- [ ] Add a per-template `swing` flag (delay offbeat 16ths ~57–62%) for `bouncy`/`laid_back` — playback-side change in `AudioEngine` step timing, big groove win.
-- [ ] Syncopation-forward templates: push-into-beat-1, rest-on-1 (the funk/hard-rock trick), gallops for heavy at intermediate+.
+- [x] 27 templates, min 4 per feel *after* the beginner filter (property-tested).
+- [x] Per-template `swing` flag on `bouncy`/`laid_back` templates; ratio seeded per riff (0.57–0.62) into `RiffSpec.swing`, carried as per-event `swingOffset` in `toEvents` so app playback, bar loops, WAV export, and batch audits all swing identically (grid `step` stays straight for views/playhead).
+- [x] Syncopation-forward templates: rest-on-1 (`rest_on_one`, `offbeat_strut`), push (`redline_push`), full gallop for heavy at intermediate+ (`full_gallop`).
 
 ### A5. Scale & key color
 One scale (minor pentatonic + optional b5), and intermediate players get the same 5 notes as beginners.
@@ -153,7 +153,7 @@ expo-av is deprecated and **removed in SDK 55** — this is a when-not-if migrat
 
 ### D4. Safety net
 - [ ] Jest + the Phase A0 engine property tests; store migration tests (v8 chain in `useNewRiffStore` is good — test it).
-- [ ] **Add a `migrate` + version bump to `usePracticeStore`** — it persists full `RiffSpec[]` session blobs with *no* migration path; the first engine shape change (Phase A3 will be one!) breaks returning users' persisted sessions. Do this *before* Phase A3 lands. Cheapest fix: on rehydrate, validate/regenerate the session rather than trusting stored specs.
+- [x] **Add a `migrate` + version bump to `usePracticeStore`** — done in Sprint 2, before A3 landed: v2 migrate validates the persisted session structurally (drops it if unparseable), and `ensureTodaySession` re-validates on every launch so a stale-shape session is rebuilt instead of trusted.
 - [ ] ESLint + Prettier + `typecheck`/`lint`/`test` scripts; GitHub Actions CI on push.
 - [ ] README for the mobile app; move the Python prototype out of the app repo (or to `/prototype`).
 
@@ -175,8 +175,8 @@ expo-av is deprecated and **removed in SDK 55** — this is a when-not-if migrat
 ## Recommended execution order
 
 ```
-Sprint 1  A0 unfreeze + A1 dynamics + A2 palm-mute chugs        ← audible transformation
-Sprint 2  A3 power chords + A4 templates/swing                   ← "real riff" threshold
+Sprint 1  A0 unfreeze + A1 dynamics + A2 palm-mute chugs        ← DONE
+Sprint 2  A3 power chords + A4 templates/swing                   ← DONE (incl. the D4 practice-store migrate prereq)
 Sprint 3  B1 playhead/metronome/count-in + B2 share export       ← practice-app table stakes
 Sprint 4  B3 design consolidation + B4 branding + B5 settings + B6 haptics
 Sprint 5  D1 blockers + D2 expo-audio + D3 Sentry/analytics + D4 tests/CI

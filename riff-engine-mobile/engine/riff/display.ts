@@ -73,6 +73,30 @@ export const RHYTHM_DESCRIPTIONS: Record<string, string> = {
     "Long bombs on the downbeats split by galloped sixteenths. Thunder, then hooves — half-time weight with double-time urgency.",
   porch_swing:
     "Five easy hits with a lazy off-beat lean. Front-porch bounce — all the swagger, none of the hurry.",
+  rest_on_one:
+    "Beat 1 is silent — the riff slams in on the 'and'. The oldest trick in hard rock: the hole where the downbeat should be makes your head fill it in.",
+  redline_push:
+    "Steady drive with an anticipated hit pushing into the next bar. That early note is the push — it keeps the riff falling forward instead of marching in place.",
+  overdrive_8ths:
+    "Nearly wall-to-wall eighths with ghost notes tucked between the accents. Busy and urgent, but with dynamic shape — the loud-soft contour is the hook.",
+  sludge_stomp:
+    "A long ring, a short answer, another ring, a flick at the end. Slow-motion heaviness that leans on the backbeat — sludge and stoner riffs live here.",
+  war_march:
+    "Paired palm-muted eighths marching in half-bar cells with accents punching through. A drill-sergeant chug that stays simple enough for a first-year player.",
+  full_gallop:
+    "Gallop cells wall-to-wall, ending on a long bomb. The full Iron Maiden treatment — relentless triplet-feel propulsion on the low string.",
+  two_step:
+    "Four hits with a swung lean — long-short, long-short. The simplest shuffle there is, and the easiest way to make two chords feel like a party.",
+  offbeat_strut:
+    "Rest on the downbeat, then strut across the off-beats with a swing lilt. Loose-hipped and cocky — the groove is in what it doesn't play.",
+  shuffle_skip:
+    "A swung shuffle that skips a beat mid-bar and lands on the push. Ghost notes keep it breathing — this is bar-band bounce distilled.",
+  slow_nod:
+    "A long open ring, a lazy answer, then a held landing — all with a gentle swing. The tempo of a slow head-nod; blues patience in riff form.",
+  dusty_stroll:
+    "A short step, a long lean, and a swung amble home. Unhurried and dusty — the riff equivalent of walking with your hands in your pockets.",
+  midnight_answer:
+    "A murmured pair of notes, a long pause for thought, then a three-note reply. Conversational late-night phrasing with dynamics doing the talking.",
 };
 
 export const ROLE_NARRATIVES: Record<string, string> = {
@@ -100,6 +124,18 @@ export const RHYTHM_DISPLAY_NAMES: Record<string, string> = {
   doom_chug: "Doom Chug",
   thunder_gallop: "Thunder Gallop",
   porch_swing: "Porch Swing",
+  rest_on_one: "Rest on One",
+  redline_push: "Redline Push",
+  overdrive_8ths: "Overdrive Eighths",
+  sludge_stomp: "Sludge Stomp",
+  war_march: "War March",
+  full_gallop: "Full Gallop",
+  two_step: "Two-Step",
+  offbeat_strut: "Offbeat Strut",
+  shuffle_skip: "Shuffle Skip",
+  slow_nod: "Slow Nod",
+  dusty_stroll: "Dusty Stroll",
+  midnight_answer: "Midnight Answer",
 };
 
 export const FEEL_DISPLAY_NAMES: Record<string, string> = {
