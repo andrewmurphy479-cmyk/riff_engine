@@ -11,6 +11,7 @@ import {
   synthesizeTone,
   applyReverb,
   applyDynamics,
+  MuteParams,
   SAMPLE_RATE,
 } from './KarplusStrong';
 
@@ -19,6 +20,8 @@ export interface OfflineRenderOptions {
   reverbMix?: number;
   /** Silence appended after the last note, in seconds (default 1.2). */
   tailSeconds?: number;
+  /** Palm-mute character overrides (tuning/audition). */
+  muteParams?: Partial<MuteParams>;
   /** Progress callback, 0..1 across the note-render loop. */
   onProgress?: (fraction: number) => void;
 }
@@ -35,7 +38,7 @@ export function renderEventsToStereo(
   bpm: number,
   options: OfflineRenderOptions = {},
 ): StereoMix {
-  const { reverbMix = 0.15, tailSeconds = 1.2, onProgress } = options;
+  const { reverbMix = 0.15, tailSeconds = 1.2, muteParams, onProgress } = options;
 
   const secondsPerStep = 60 / bpm / STEPS_PER_BEAT;
   const maxStep = Math.max(...events.map((e) => e.step + e.duration));
@@ -72,6 +75,7 @@ export function renderEventsToStereo(
       velocity: event.velocity ?? 0.7,
       technique: event.technique ?? undefined,
       guitarString: event.string,
+      muteParams,
     });
 
     for (let j = 0; j < left.length; j++) {

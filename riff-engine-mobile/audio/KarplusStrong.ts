@@ -55,9 +55,50 @@ function velocityParams(velocity: number) {
 }
 
 /**
+ * Palm-mute character parameters. Loop damping alone can't produce a real
+ * palm mute: Karplus-Strong decay scales with frequency, so on the low E a
+ * damping tweak still rings for seconds. Instead the mute path applies an
+ * explicit two-stage output envelope — a fast "chunk" stage (the palm
+ * absorbing the string) blended with a quicker-dying pitched body — plus a
+ * short tail and reduced body resonance (the palm damps the top too).
+ * Exposed as overridable params so tools/muteAudition.ts can A/B variants.
+ */
+export interface MuteParams {
+  /** Fast-stage decay time constant (the palm 'chunk'), ms. */
+  chunkDecayMs: number;
+  /** Slow-stage decay time constant (pitched body under the palm), ms. */
+  bodyDecayMs: number;
+  /** Blend of the slow stage (0..1): higher = more audible pitch. */
+  bodyBlend: number;
+  /** Ring-out tail for muted notes, ms (caps sustainTailMs). */
+  tailMs: number;
+  /** Body-resonance scale while muted. */
+  bodyResScale: number;
+  /** Output gain — palm mutes are compressed and punchy. */
+  gain: number;
+  dampingMod: number;
+  transientScale: number;
+  noiseScale: number;
+  toneOffset: number;
+}
+
+export const DEFAULT_MUTE_PARAMS: MuteParams = {
+  chunkDecayMs: 22,
+  bodyDecayMs: 120,
+  bodyBlend: 0.25,
+  tailMs: 50,
+  bodyResScale: 0.3,
+  gain: 1.12,
+  dampingMod: -0.012,
+  transientScale: 1.0,
+  noiseScale: 0.6,
+  toneOffset: -0.3,
+};
+
+/**
  * Technique-dependent synthesis modifiers.
  */
-function techniqueParams(technique: Technique | undefined) {
+function techniqueParams(technique: Technique | undefined, mute: MuteParams) {
   switch (technique) {
     case 'hammer':
     case 'pull':
@@ -76,10 +117,10 @@ function techniqueParams(technique: Technique | undefined) {
       };
     case 'mute':
       return {
-        dampingMod: -0.012,     // Strong damping — palm-muted chug
-        transientScale: 1.1,    // Slightly more attack click
-        noiseScale: 0.5,
-        toneOffset: -0.25,      // Much darker tone
+        dampingMod: mute.dampingMod,
+        transientScale: mute.transientScale,
+        noiseScale: mute.noiseScale,
+        toneOffset: mute.toneOffset,
       };
     case 'pluck':
     default:
@@ -100,6 +141,8 @@ export interface SynthOptions {
   guitarString?: GuitarString;
   /** Extra samples rendered past durationMs so the string rings out naturally. */
   sustainTailMs?: number;
+  /** Palm-mute character overrides (tuning/audition); merged over defaults. */
+  muteParams?: Partial<MuteParams>;
 }
 
 // Default ring-out tail added to every synthesized note. Karplus-Strong damping
@@ -126,11 +169,16 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     sustainTailMs = DEFAULT_SUSTAIN_TAIL_MS,
   } = opts;
 
+  const isMuted = technique === 'mute';
+  const mp: MuteParams = { ...DEFAULT_MUTE_PARAMS, ...opts.muteParams };
+
   const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
-  const totalDurationMs = durationMs + sustainTailMs;
+  // Muted notes die under the palm — no long ring-out tail.
+  const effectiveTailMs = isMuted ? Math.min(sustainTailMs, mp.tailMs) : sustainTailMs;
+  const totalDurationMs = durationMs + effectiveTailMs;
   const numSamples = Math.floor((totalDurationMs / 1000) * SAMPLE_RATE);
   const vp = velocityParams(velocity);
-  const tp = techniqueParams(technique);
+  const tp = techniqueParams(technique, mp);
 
   // Classify by actual guitar string when available, not just MIDI pitch
   const isBassString = guitarString
@@ -223,6 +271,11 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     }
   }
 
+  // Palm-mute envelope constants (two-stage decay after a short hold).
+  const muteHoldSamples = SAMPLE_RATE * 0.006;
+  const muteChunkTau = (mp.chunkDecayMs / 1000) * SAMPLE_RATE;
+  const muteBodyTau = (mp.bodyDecayMs / 1000) * SAMPLE_RATE;
+
   for (let i = 0; i < numSamples; i++) {
     const tableIndex = i % periodLength;
     const nextIndex = (i + 1) % periodLength;
@@ -257,7 +310,8 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     // Bass strings need less body resonance (avoids mud), treble gets more (adds fullness)
     const t = i / SAMPLE_RATE;
     let bodyRes = 0;
-    const bodyScale = isBassString ? 0.4 : (isTrebleString ? 1.2 : 0.8);
+    let bodyScale = isBassString ? 0.4 : (isTrebleString ? 1.2 : 0.8);
+    if (isMuted) bodyScale *= mp.bodyResScale;
     for (let b = 0; b < BODY_MODES.length; b++) {
       const mode = BODY_MODES[b];
       bodyRes += Math.sin(2 * Math.PI * mode.freq * t + mode.phase) *
@@ -277,6 +331,17 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     // Quick attack envelope
     const envelope = Math.min(1, 1 - Math.exp(-i / (SAMPLE_RATE * 0.002)));
     sample *= envelope;
+
+    // Palm-mute decay: after a short hold, a fast "chunk" stage blended with
+    // a quicker-dying pitched body. Frequency-independent, unlike loop
+    // damping, so the low E chugs as tightly as the high strings.
+    if (isMuted) {
+      const dt = Math.max(0, i - muteHoldSamples);
+      const muteEnv =
+        (1 - mp.bodyBlend) * Math.exp(-dt / muteChunkTau) +
+        mp.bodyBlend * Math.exp(-dt / muteBodyTau);
+      sample *= muteEnv * mp.gain;
+    }
 
     mono[i] = sample * vp.amplitude;
   }
