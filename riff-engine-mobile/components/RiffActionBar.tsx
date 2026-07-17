@@ -1,28 +1,38 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { colors, spacing } from "../theme/colors";
 
 interface Props {
   isPlaying: boolean;
   isSaved: boolean;
   isLooping: boolean;
+  isSharing?: boolean;
   disabled?: boolean;
   onPlayToggle: () => void;
   onGenerate: () => void;
   onSaveToggle: () => void;
   onLoopToggle: () => void;
+  onShare?: () => void;
 }
 
 export function RiffActionBar({
   isPlaying,
   isSaved,
   isLooping,
+  isSharing,
   disabled,
   onPlayToggle,
   onGenerate,
   onSaveToggle,
   onLoopToggle,
+  onShare,
 }: Props) {
   return (
     <View style={styles.bar}>
@@ -80,6 +90,26 @@ export function RiffActionBar({
         />
         <Text style={styles.iconLabel}>{isSaved ? "saved" : "save"}</Text>
       </TouchableOpacity>
+
+      {onShare && (
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={onShare}
+          disabled={disabled || isSharing}
+          activeOpacity={0.6}
+        >
+          {isSharing ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Ionicons
+              name="share-outline"
+              size={22}
+              color={colors.textSecondary}
+            />
+          )}
+          <Text style={styles.iconLabel}>share</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

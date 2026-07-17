@@ -11,18 +11,67 @@ interface Props {
   value: number;
   isOverride: boolean;
   onChange: (bpm: number | null) => void;
+  metronomeEnabled?: boolean;
+  countInEnabled?: boolean;
+  onToggleMetronome?: () => void;
+  onToggleCountIn?: () => void;
 }
 
 function clamp(v: number): number {
   return Math.max(MIN_BPM, Math.min(MAX_BPM, v));
 }
 
-export function TempoStepper({ value, isOverride, onChange }: Props) {
+export function TempoStepper({
+  value,
+  isOverride,
+  onChange,
+  metronomeEnabled = false,
+  countInEnabled = false,
+  onToggleMetronome,
+  onToggleCountIn,
+}: Props) {
   const step = (delta: number) => onChange(clamp(value + delta));
   const reset = () => onChange(null);
 
   return (
     <View style={styles.row}>
+      {(onToggleMetronome || onToggleCountIn) && (
+        <View style={styles.clickCluster}>
+          {onToggleMetronome && (
+            <TouchableOpacity
+              onPress={onToggleMetronome}
+              activeOpacity={0.6}
+              hitSlop={6}
+            >
+              <Text
+                style={[
+                  styles.clickLabel,
+                  metronomeEnabled && styles.clickLabelActive,
+                ]}
+              >
+                click
+              </Text>
+            </TouchableOpacity>
+          )}
+          {onToggleCountIn && (
+            <TouchableOpacity
+              onPress={onToggleCountIn}
+              activeOpacity={0.6}
+              hitSlop={6}
+            >
+              <Text
+                style={[
+                  styles.clickLabel,
+                  countInEnabled && styles.clickLabelActive,
+                ]}
+              >
+                count-in
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       <TouchableOpacity
         style={styles.stepButton}
         onPress={() => step(-STEP)}
@@ -108,6 +157,21 @@ const styles = StyleSheet.create({
   resetButton: {
     position: "absolute",
     right: spacing.lg,
+  },
+  clickCluster: {
+    position: "absolute",
+    left: spacing.lg,
+    gap: 6,
+  },
+  clickLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  clickLabelActive: {
+    color: colors.accent,
   },
   resetLabel: {
     color: colors.textMuted,

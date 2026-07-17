@@ -1,6 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   SafeAreaView,
@@ -11,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { AudioEngine, useAudioEngine } from "../../audio/AudioEngine";
+import { AudioExporter } from "../../audio/AudioExporter";
 import { RiffTabView } from "../../components/RiffTabView";
 import { PHRASE_LABELS } from "../../engine/riff/display";
 import { RiffSpec } from "../../engine/riff/spec";
@@ -138,12 +142,18 @@ interface SheetProps {
 
 function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [activeStep, setActiveStep] = useState<number | null>(null);
   const showEmbellishments = useNewRiffStore((s) => s.showEmbellishments);
   const toggleEmbellishments = useNewRiffStore((s) => s.toggleEmbellishments);
 
   const audioEngine = useAudioEngine({
     onPlaybackStart: () => setIsPlaying(true),
-    onPlaybackEnd: () => setIsPlaying(false),
+    onPlaybackEnd: () => {
+      setIsPlaying(false);
+      setActiveStep(null);
+    },
+    onStepPlay: (step) => setActiveStep(step < 0 ? null : step),
   });
 
   useEffect(() => {
@@ -161,6 +171,36 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
       riff.tempo_bpm,
     );
   }, [riff, isPlaying, audioEngine, showEmbellishments]);
+
+  const handleShare = useCallback(async () => {
+    if (isSharing) return;
+    if (isPlaying) audioEngine.stop();
+    setIsSharing(true);
+    try {
+      // Let the spinner paint before the synchronous render blocks the JS thread.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const events = riffSpecToEvents(riff);
+      const result = await AudioExporter.exportToWav(
+        showEmbellishments ? events : stripTechniques(events),
+        riff.tempo_bpm,
+      );
+      if (!result.success || !result.filePath) {
+        Alert.alert("Export failed", result.error ?? "Unknown error");
+        return;
+      }
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(result.filePath, {
+          mimeType: "audio/wav",
+          dialogTitle: "Share riff",
+        });
+      } else {
+        Alert.alert("Sharing unavailable", "Sharing isn't supported on this device.");
+      }
+      await AudioExporter.deleteExport(result.filePath);
+    } finally {
+      setIsSharing(false);
+    }
+  }, [riff, isSharing, isPlaying, audioEngine, showEmbellishments]);
 
   return (
     <SafeAreaView style={styles.sheet}>
@@ -185,6 +225,7 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
           riff={riff}
           showEmbellishments={showEmbellishments}
           onToggleEmbellishments={toggleEmbellishments}
+          activeStep={activeStep}
           footer={
             <View style={styles.sheetControls}>
               <TouchableOpacity
@@ -196,6 +237,23 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
                 <Text style={styles.playLabel}>
                   {isPlaying ? "Stop" : "Play"}
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.shareButton}
+                onPress={handleShare}
+                disabled={isSharing}
+                activeOpacity={0.7}
+              >
+                {isSharing ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : (
+                  <Ionicons
+                    name="share-outline"
+                    size={16}
+                    color={colors.accent}
+                  />
+                )}
+                <Text style={styles.shareLabel}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.removeButton}
@@ -355,6 +413,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.3,
+  },
+  shareButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: borderRadius.sm,
+    backgroundColor: "rgba(74, 122, 255, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(74, 122, 255, 0.3)",
+  },
+  shareLabel: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: "600",
   },
   removeButton: {
     flexDirection: "row",

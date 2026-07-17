@@ -38,6 +38,8 @@ interface NewRiffState {
   tempoOverride: number | null;
   isLooping: boolean;
   showEmbellishments: boolean;
+  metronomeEnabled: boolean;
+  countInEnabled: boolean;
   lockedFields: LockedFields;
   savedRiffs: RiffSpec[];
   exploreIntroDismissed: boolean;
@@ -50,6 +52,8 @@ interface NewRiffState {
   setTempoOverride: (bpm: number | null) => void;
   setIsLooping: (v: boolean) => void;
   toggleEmbellishments: () => void;
+  toggleMetronome: () => void;
+  toggleCountIn: () => void;
   toggleLock: (field: LockField) => void;
   toggleSaveCurrent: () => void;
   unsaveRiff: (seed: number) => void;
@@ -66,6 +70,8 @@ export const useNewRiffStore = create<NewRiffState>()(
       tempoOverride: null,
       isLooping: false,
       showEmbellishments: true,
+      metronomeEnabled: false,
+      countInEnabled: false,
       lockedFields: { key: false, feel: false },
       savedRiffs: [],
       exploreIntroDismissed: false,
@@ -142,6 +148,14 @@ export const useNewRiffStore = create<NewRiffState>()(
         set({ showEmbellishments: !get().showEmbellishments });
       },
 
+      toggleMetronome: () => {
+        set({ metronomeEnabled: !get().metronomeEnabled });
+      },
+
+      toggleCountIn: () => {
+        set({ countInEnabled: !get().countInEnabled });
+      },
+
       toggleLock: (field) => {
         const { lockedFields } = get();
         set({
@@ -177,10 +191,12 @@ export const useNewRiffStore = create<NewRiffState>()(
         tempoOverride: state.tempoOverride,
         isLooping: state.isLooping,
         showEmbellishments: state.showEmbellishments,
+        metronomeEnabled: state.metronomeEnabled,
+        countInEnabled: state.countInEnabled,
         lockedFields: state.lockedFields,
         exploreIntroDismissed: state.exploreIntroDismissed,
       }),
-      version: 8,
+      version: 9,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           return {
@@ -216,6 +232,9 @@ export const useNewRiffStore = create<NewRiffState>()(
             ...rest,
             lockedFields: { key: !!restLocked.key, feel: !!restLocked.feel },
           };
+        }
+        if (version < 9) {
+          return { ...persisted, metronomeEnabled: false, countInEnabled: false };
         }
         return persisted;
       },

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -34,24 +34,62 @@ export default function ExploreScreen() {
   const [showSequence, setShowSequence] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeStep, setActiveStep] = useState<number | null>(null);
+  // 'bar' = loop the selected bar; 'riff' = play the whole riff, auto-following
+  // the sounding bar on the fretboard.
+  const [playMode, setPlayMode] = useState<"bar" | "riff" | null>(null);
+  const playModeRef = useRef<"bar" | "riff" | null>(null);
+  // Set when riff-mode playback advances the bar itself, so the stop-on-bar-
+  // change effect can tell auto-follow apart from a manual bar tap.
+  const followingBarChange = useRef(false);
+  const lastFollowBar = useRef(-1);
 
   const { play: playAudio, stop: stopAudio } = useAudioEngine({
     onPlaybackStart: () => setIsPlaying(true),
     onPlaybackEnd: () => {
       setIsPlaying(false);
       setActiveStep(null);
+      setPlayMode(null);
+      playModeRef.current = null;
     },
-    onStepPlay: (step) => setActiveStep(step < 0 ? null : step),
+    onStepPlay: (step) => {
+      if (step < 0) {
+        setActiveStep(null);
+        return;
+      }
+      if (playModeRef.current === "riff") {
+        const barIdx = Math.floor(step / STEPS_PER_BAR);
+        // Only flag genuine bar advances — a flag set on a same-bar step would
+        // go stale and swallow the next manual bar tap's stop.
+        if (barIdx !== lastFollowBar.current) {
+          lastFollowBar.current = barIdx;
+          followingBarChange.current = true;
+          setCurrentBarIndex(barIdx);
+        }
+        setActiveStep(step % STEPS_PER_BAR);
+      } else {
+        setActiveStep(step);
+      }
+    },
   });
 
   useEffect(() => {
     setCurrentBarIndex(0);
   }, [currentRiff?.seed]);
 
-  // Stop playback if the riff or selected bar changes
+  // Stop playback if the riff changes
   useEffect(() => {
     stopAudio();
-  }, [currentRiff?.seed, currentBarIndex, stopAudio]);
+  }, [currentRiff?.seed, stopAudio]);
+
+  // Stop playback when the user manually picks a different bar — but not when
+  // riff playback is the one advancing the bar.
+  useEffect(() => {
+    if (followingBarChange.current) {
+      followingBarChange.current = false;
+      return;
+    }
+    stopAudio();
+  }, [currentBarIndex, stopAudio]);
 
   if (!currentRiff) {
     return (
@@ -90,8 +128,24 @@ export default function ExploreScreen() {
   const summary = buildRiffSummary(currentRiff);
   const effectiveBpm = tempoOverride ?? currentRiff.tempo_bpm;
 
-  const handlePlayToggle = useCallback(() => {
-    if (isPlaying) {
+  // Big play tile: the full riff, fretboard following along bar by bar.
+  const handlePlayRiff = useCallback(() => {
+    if (isPlaying && playMode === "riff") {
+      stopAudio();
+      return;
+    }
+    const events = riffSpecToEvents(currentRiff);
+    const riffEvents = showEmbellishments ? events : stripTechniques(events);
+    if (riffEvents.length === 0) return;
+    setPlayMode("riff");
+    playModeRef.current = "riff";
+    lastFollowBar.current = -1;
+    playAudio(riffEvents, effectiveBpm, false);
+  }, [isPlaying, playMode, stopAudio, playAudio, currentRiff, effectiveBpm, showEmbellishments]);
+
+  // Bar tile: loop just the selected bar for close study.
+  const handlePlayBar = useCallback(() => {
+    if (isPlaying && playMode === "bar") {
       stopAudio();
       return;
     }
@@ -102,8 +156,10 @@ export default function ExploreScreen() {
       .map((e) => ({ ...e, step: e.step - startStep }));
     const barEvents = showEmbellishments ? filtered : stripTechniques(filtered);
     if (barEvents.length === 0) return;
+    setPlayMode("bar");
+    playModeRef.current = "bar";
     playAudio(barEvents, effectiveBpm, true);
-  }, [isPlaying, stopAudio, playAudio, currentRiff, clampedIndex, effectiveBpm, showEmbellishments]);
+  }, [isPlaying, playMode, stopAudio, playAudio, currentRiff, clampedIndex, effectiveBpm, showEmbellishments]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -147,16 +203,25 @@ export default function ExploreScreen() {
 
       <View style={styles.toolbar}>
         <TouchableOpacity
-          style={[styles.playTile, isPlaying && styles.playTileActive]}
-          onPress={handlePlayToggle}
+          style={[
+            styles.playTile,
+            isPlaying && playMode === "riff" && styles.playTileActive,
+          ]}
+          onPress={handlePlayRiff}
           activeOpacity={0.7}
         >
           <Ionicons
-            name={isPlaying ? "stop" : "play"}
+            name={isPlaying && playMode === "riff" ? "stop" : "play"}
             size={22}
             color={colors.white}
           />
         </TouchableOpacity>
+        <Toggle
+          icon={isPlaying && playMode === "bar" ? "stop-outline" : "repeat"}
+          label="Bar"
+          active={isPlaying && playMode === "bar"}
+          onPress={handlePlayBar}
+        />
         <Toggle
           icon="musical-note-outline"
           label="Scale"

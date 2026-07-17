@@ -40,6 +40,8 @@ interface Props {
   onBarTap?: (barIdx: number) => void;
   showEmbellishments?: boolean;
   onToggleEmbellishments?: () => void;
+  /** Absolute step (0-63) currently playing; null when stopped. */
+  activeStep?: number | null;
 }
 
 export function RiffTabView({
@@ -48,6 +50,7 @@ export function RiffTabView({
   onBarTap,
   showEmbellishments = true,
   onToggleEmbellishments,
+  activeStep = null,
 }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -128,6 +131,24 @@ export function RiffTabView({
                     />
                   );
                 })}
+
+                {/* Playhead — highlights the currently sounding step column */}
+                {activeStep !== null &&
+                  activeStep >= barStart * STEPS_PER_BAR &&
+                  activeStep < barEnd * STEPS_PER_BAR && (
+                    <Rect
+                      x={
+                        LABEL_WIDTH +
+                        (activeStep - barStart * STEPS_PER_BAR) * STEP_WIDTH
+                      }
+                      y={TOP_PADDING - 4}
+                      width={STEP_WIDTH}
+                      height={STAFF_HEIGHT + 8}
+                      fill="#4A7AFF"
+                      opacity={0.28}
+                      rx={2}
+                    />
+                  )}
 
                 {/* Tap target rect per bar — transparent, covers staff region */}
                 {onBarTap &&
