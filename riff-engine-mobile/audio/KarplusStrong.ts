@@ -70,7 +70,7 @@ export interface MuteParams {
   bodyDecayMs: number;
   /** Blend of the slow stage (0..1): higher = more audible pitch. */
   bodyBlend: number;
-  /** Ring-out tail for muted notes, ms (caps sustainTailMs). */
+  /** Ring-out tail for muted notes, ms (extends the mute's ring length). */
   tailMs: number;
   /** Body-resonance scale while muted. */
   bodyResScale: number;
@@ -135,20 +135,55 @@ function techniqueParams(technique: Technique | undefined, mute: MuteParams) {
 
 export interface SynthOptions {
   midiNote: number;
-  durationMs: number;
   velocity?: number;
   technique?: Technique;
   guitarString?: GuitarString;
-  /** Extra samples rendered past durationMs so the string rings out naturally. */
-  sustainTailMs?: number;
   /** Palm-mute character overrides (tuning/audition); merged over defaults. */
   muteParams?: Partial<MuteParams>;
 }
 
-// Default ring-out tail added to every synthesized note. Karplus-Strong damping
-// provides a realistic decay curve over this window — without it, notes get
-// hard-cut at their nominal duration and feel staccato.
-const DEFAULT_SUSTAIN_TAIL_MS = 120;
+// --- Ring length ---
+// A clip's length is the note's natural ring, NOT its grid duration. On a real
+// guitar the next onset on the SAME string ends a note (the mix-time choke);
+// other strings ring over it. Gating clips at grid duration cut bass notes at
+// near-full volume — the measured cause of choppy playback.
+const RING_MS = {
+  bass: 3500,   // low E decays only ~-10dB by 5s; the taper below finishes it
+  mid: 2800,
+  treble: 2200, // high e is near -40dB well before 2s on its own
+};
+// Fraction of the ring over which a raised-cosine taper takes the slowly
+// decaying string to true silence. Slow enough to read as decay, not a gate.
+const RING_TAPER_FRACTION = 0.35;
+
+function classifyString(guitarString: GuitarString | undefined, midiNote: number) {
+  const isBass = guitarString
+    ? (['E', 'A', 'D'] as string[]).includes(guitarString)
+    : midiNote < 52;
+  const isTreble = guitarString
+    ? (['G', 'B', 'e'] as string[]).includes(guitarString)
+    : midiNote > 59;
+  return { isBass, isTreble };
+}
+
+/**
+ * Clip length synthesizeTone will produce for a note, in ms. Exposed so
+ * offline mixing can size buffers and place choke points before synthesis.
+ */
+export function ringLengthMs(
+  guitarString: GuitarString | undefined,
+  midiNote: number,
+  technique?: Technique,
+  muteParams?: Partial<MuteParams>,
+): number {
+  if (technique === 'mute') {
+    // Hold + slow-stage decay to ~-55dB (blend * e^-5) + configured tail.
+    const mp = { ...DEFAULT_MUTE_PARAMS, ...muteParams };
+    return 6 + mp.bodyDecayMs * 5 + mp.tailMs;
+  }
+  const { isBass, isTreble } = classifyString(guitarString, midiNote);
+  return isBass ? RING_MS.bass : isTreble ? RING_MS.treble : RING_MS.mid;
+}
 
 export interface StereoSamples {
   left: Float32Array;
@@ -162,31 +197,22 @@ export interface StereoSamples {
 export function synthesizeTone(opts: SynthOptions): StereoSamples {
   const {
     midiNote,
-    durationMs,
     velocity = 0.7,
     technique,
     guitarString,
-    sustainTailMs = DEFAULT_SUSTAIN_TAIL_MS,
   } = opts;
 
   const isMuted = technique === 'mute';
   const mp: MuteParams = { ...DEFAULT_MUTE_PARAMS, ...opts.muteParams };
 
   const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
-  // Muted notes die under the palm — no long ring-out tail.
-  const effectiveTailMs = isMuted ? Math.min(sustainTailMs, mp.tailMs) : sustainTailMs;
-  const totalDurationMs = durationMs + effectiveTailMs;
+  const totalDurationMs = ringLengthMs(guitarString, midiNote, technique, opts.muteParams);
   const numSamples = Math.floor((totalDurationMs / 1000) * SAMPLE_RATE);
   const vp = velocityParams(velocity);
   const tp = techniqueParams(technique, mp);
 
   // Classify by actual guitar string when available, not just MIDI pitch
-  const isBassString = guitarString
-    ? (['E', 'A', 'D'] as string[]).includes(guitarString)
-    : midiNote < 52;
-  const isTrebleString = guitarString
-    ? (['G', 'B', 'e'] as string[]).includes(guitarString)
-    : midiNote > 59;
+  const { isBass: isBassString, isTreble: isTrebleString } = classifyString(guitarString, midiNote);
 
   // --- Karplus-Strong delay line with fractional delay for pitch accuracy ---
   const exactPeriod = SAMPLE_RATE / frequency;
@@ -308,14 +334,18 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
 
     // Body resonance (6-mode) — scaled inversely with pitch
     // Bass strings need less body resonance (avoids mud), treble gets more (adds fullness)
+    // All modes have decayed below audibility past ~1.2s, so skip the
+    // transcendental work over the (long) ring tail.
     const t = i / SAMPLE_RATE;
     let bodyRes = 0;
-    let bodyScale = isBassString ? 0.4 : (isTrebleString ? 1.2 : 0.8);
-    if (isMuted) bodyScale *= mp.bodyResScale;
-    for (let b = 0; b < BODY_MODES.length; b++) {
-      const mode = BODY_MODES[b];
-      bodyRes += Math.sin(2 * Math.PI * mode.freq * t + mode.phase) *
-                 mode.amp * Math.exp(-mode.decay * t) * bodyScale;
+    if (t < 1.2) {
+      let bodyScale = isBassString ? 0.4 : (isTrebleString ? 1.2 : 0.8);
+      if (isMuted) bodyScale *= mp.bodyResScale;
+      for (let b = 0; b < BODY_MODES.length; b++) {
+        const mode = BODY_MODES[b];
+        bodyRes += Math.sin(2 * Math.PI * mode.freq * t + mode.phase) *
+                   mode.amp * Math.exp(-mode.decay * t) * bodyScale;
+      }
     }
 
     let sample = filtered * 0.85 + bodyRes;
@@ -366,6 +396,17 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     presLP += presCoeff * (mono[i] - presLP);
     // Subtract LP to get HP (presence frequencies), add a fraction back
     mono[i] += (mono[i] - presLP) * presAmount;
+  }
+
+  // Ring-out taper: the KS loop's decay on bass strings is far slower than any
+  // usable clip length (low E is ~-10dB after 5s), so the final stretch of the
+  // ring tapers to true silence with a raised cosine. At mix time most notes
+  // are choked by the next same-string hit long before this region plays.
+  const taperSamples = Math.floor(numSamples * RING_TAPER_FRACTION);
+  const taperStart = numSamples - taperSamples;
+  for (let i = taperStart; i < numSamples; i++) {
+    const phase = (i - taperStart) / taperSamples;
+    mono[i] *= 0.5 * (1 + Math.cos(phase * Math.PI));
   }
 
   // Release fade — last 25ms cosine-tapers to silence so the WAV ends at zero,

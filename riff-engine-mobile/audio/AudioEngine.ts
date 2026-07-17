@@ -76,7 +76,6 @@ class AudioEngineImpl {
     // Pre-generate all tones ONCE — tones are cached across loop iterations
     const noteSpecs = events.map(event => ({
       midiNote: fretToMidiNote(event.string, event.fret),
-      durationMs: event.duration * msPerStep,
       velocity: event.velocity ?? 0.7,
       technique: event.technique ?? undefined,
       guitarString: event.string,
@@ -135,7 +134,6 @@ class AudioEngineImpl {
     // Schedule each note with grouped jitter + polyphony mixing
     for (const event of events) {
       const delayMs = (event.step + (event.swingOffset ?? 0)) * msPerStep;
-      const noteDurationMs = event.duration * msPerStep;
       const jitterMs = stepJitter.get(event.step) ?? 0;
 
       const velocity = event.velocity ?? 0.7;
@@ -152,7 +150,7 @@ class AudioEngineImpl {
       const humanizedDelay = Math.max(0, delayMs + jitterMs + strumDelay);
 
       const timeoutId = setTimeout(() => {
-        this.playNote(event.string, event.fret, noteDurationMs, velocity, technique, playbackVolume);
+        this.playNote(event.string, event.fret, velocity, technique, playbackVolume);
       }, humanizedDelay);
 
       this.scheduledNotes.push({ timeoutId });
@@ -169,7 +167,6 @@ class AudioEngineImpl {
   private async playNote(
     string: GuitarString,
     fret: number,
-    durationMs: number,
     velocity: number = 0.7,
     technique?: Technique,
     playbackVolume?: number
@@ -177,7 +174,7 @@ class AudioEngineImpl {
     if (!this.isPlaying) return;
 
     try {
-      await SamplePlayer.playNote(string, fret, velocity, durationMs, technique, playbackVolume);
+      await SamplePlayer.playNote(string, fret, velocity, technique, playbackVolume);
     } catch (error) {
       console.error('Error playing note:', error);
     }
@@ -198,7 +195,9 @@ class AudioEngineImpl {
     this.loopContext = null;
     this.scheduledNotes = [];
     this.endTimeoutId = null;
-    SamplePlayer.stopAll();
+    // Natural end: no stopAll — the final notes ring out and clean themselves
+    // up via didJustFinish, like a real guitar after the last strum. A manual
+    // stop() still flushes everything immediately.
     this.config.onStepPlay?.(-1);
     this.config.onPlaybackEnd?.();
   }
