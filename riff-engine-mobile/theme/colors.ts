@@ -12,6 +12,9 @@ export const colors = {
   card: 'rgba(255, 255, 255, 0.06)',
   cardBorder: 'rgba(255, 255, 255, 0.06)',
   cardHover: 'rgba(255, 255, 255, 0.09)',
+  // Opaque card surface for dense content (tab view, context/meta cards) where
+  // the translucent glass style would let background bleed through.
+  cardSolid: '#12121e',
 
   // Text
   textPrimary: 'rgba(255, 255, 255, 0.87)',
@@ -29,6 +32,12 @@ export const colors = {
   success: '#1A9A4A',
   warning: '#F59E0B',
   error: '#EF4444',
+
+  // Heart / saved-riff pink. Distinct from `error`: heart marks the
+  // save/remove affordance, error marks actual failure states.
+  heart: '#FF4E78',
+  heartBg: 'rgba(255, 78, 120, 0.1)',
+  heartBorder: 'rgba(255, 78, 120, 0.3)',
 
   // Surface / Border
   surface: '#1A1A24',

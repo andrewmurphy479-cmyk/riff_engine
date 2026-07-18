@@ -14,6 +14,7 @@ import { useAudioEngine } from "../../audio/AudioEngine";
 import { RiffTabView } from "../../components/RiffTabView";
 import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { riffSpecToEvents } from "../../engine/riff/toEvents";
+import { hapticSelect, hapticSuccess, hapticTap } from "../../lib/haptics";
 import {
   effectiveStreak,
   isTodayComplete,
@@ -76,6 +77,7 @@ export default function TodayScreen() {
   const handlePlay = useCallback(
     (idx: number) => {
       if (!session) return;
+      hapticTap();
       if (playingIdx === idx) {
         audio.stop();
         return;
@@ -88,6 +90,21 @@ export default function TodayScreen() {
       setPlayingIdx(idx);
     },
     [session, playingIdx, audio],
+  );
+
+  // Success buzz the moment a mark-done completes the daily goal.
+  const handleMarkDone = useCallback(
+    (idx: number) => {
+      if (!session || session.completed[idx]) return;
+      const doneAfter = session.completed.filter(Boolean).length + 1;
+      if (doneAfter >= session.goalCount) {
+        hapticSuccess();
+      } else {
+        hapticSelect();
+      }
+      markRiffPracticed(idx);
+    },
+    [session, markRiffPracticed],
   );
 
   if (!session) {
@@ -161,6 +178,10 @@ export default function TodayScreen() {
                 style={[styles.playBtn, isPlaying && styles.playBtnActive]}
                 onPress={() => handlePlay(idx)}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isPlaying ? `Stop riff ${idx + 1}` : `Play riff ${idx + 1}`
+                }
               >
                 <Ionicons
                   name={isPlaying ? "stop" : "play"}
@@ -187,9 +208,15 @@ export default function TodayScreen() {
 
               <TouchableOpacity
                 style={[styles.doneBtn, done && styles.doneBtnActive]}
-                onPress={() => markRiffPracticed(idx)}
+                onPress={() => handleMarkDone(idx)}
                 disabled={done}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  done
+                    ? `Riff ${idx + 1} practiced`
+                    : `Mark riff ${idx + 1} as practiced`
+                }
               >
                 <Ionicons
                   name={done ? "checkmark-circle" : "ellipse-outline"}
@@ -230,6 +257,8 @@ export default function TodayScreen() {
                 onPress={() => setOpenIdx(null)}
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close riff sheet"
               >
                 <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
@@ -269,7 +298,7 @@ export default function TodayScreen() {
                         styles.sheetDoneBtn,
                         session.completed[openIdx] && styles.sheetDoneBtnActive,
                       ]}
-                      onPress={() => markRiffPracticed(openIdx)}
+                      onPress={() => handleMarkDone(openIdx)}
                       disabled={session.completed[openIdx]}
                       activeOpacity={0.8}
                     >

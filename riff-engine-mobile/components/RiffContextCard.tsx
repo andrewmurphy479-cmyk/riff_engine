@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     padding: spacing.lg,
-    backgroundColor: "#12121e",
+    backgroundColor: colors.cardSolid,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",

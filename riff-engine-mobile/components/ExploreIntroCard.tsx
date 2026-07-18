@@ -18,6 +18,8 @@ export function ExploreIntroCard() {
         <TouchableOpacity
           onPress={dismiss}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss explanation"
         >
           <Ionicons name="close" size={16} color={colors.textMuted} />
         </TouchableOpacity>
@@ -36,7 +38,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     padding: spacing.md,
-    backgroundColor: "#12121e",
+    backgroundColor: colors.cardSolid,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(74, 122, 255, 0.15)",

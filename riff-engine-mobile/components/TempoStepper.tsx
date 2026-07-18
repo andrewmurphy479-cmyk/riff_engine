@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { hapticSelect } from "../lib/haptics";
 import { colors, spacing } from "../theme/colors";
 
 const MIN_BPM = 40;
@@ -30,8 +31,14 @@ export function TempoStepper({
   onToggleMetronome,
   onToggleCountIn,
 }: Props) {
-  const step = (delta: number) => onChange(clamp(value + delta));
-  const reset = () => onChange(null);
+  const step = (delta: number) => {
+    hapticSelect();
+    onChange(clamp(value + delta));
+  };
+  const reset = () => {
+    hapticSelect();
+    onChange(null);
+  };
 
   return (
     <View style={styles.row}>
@@ -39,9 +46,15 @@ export function TempoStepper({
         <View style={styles.clickCluster}>
           {onToggleMetronome && (
             <TouchableOpacity
-              onPress={onToggleMetronome}
+              onPress={() => {
+                hapticSelect();
+                onToggleMetronome();
+              }}
               activeOpacity={0.6}
               hitSlop={6}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: metronomeEnabled }}
+              accessibilityLabel="Metronome click"
             >
               <Text
                 style={[
@@ -55,9 +68,15 @@ export function TempoStepper({
           )}
           {onToggleCountIn && (
             <TouchableOpacity
-              onPress={onToggleCountIn}
+              onPress={() => {
+                hapticSelect();
+                onToggleCountIn();
+              }}
               activeOpacity={0.6}
               hitSlop={6}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: countInEnabled }}
+              accessibilityLabel="Count-in before playback"
             >
               <Text
                 style={[
@@ -78,6 +97,8 @@ export function TempoStepper({
         disabled={value <= MIN_BPM}
         activeOpacity={0.6}
         hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel="Decrease tempo"
       >
         <Ionicons name="remove" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
@@ -95,6 +116,8 @@ export function TempoStepper({
         disabled={value >= MAX_BPM}
         activeOpacity={0.6}
         hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel="Increase tempo"
       >
         <Ionicons name="add" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
@@ -105,6 +128,8 @@ export function TempoStepper({
           onPress={reset}
           activeOpacity={0.6}
           hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel="Reset tempo to the riff's default"
         >
           <Text style={styles.resetLabel}>reset</Text>
         </TouchableOpacity>

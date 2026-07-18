@@ -144,7 +144,7 @@ export function RiffTabView({
                       y={TOP_PADDING - 4}
                       width={STEP_WIDTH}
                       height={STAFF_HEIGHT + 8}
-                      fill="#4A7AFF"
+                      fill={colors.accent}
                       opacity={0.28}
                       rx={2}
                     />
@@ -188,7 +188,7 @@ export function RiffTabView({
                       <SvgText
                         x={bx + 40}
                         y={TOP_PADDING - 10}
-                        fill="#4A7AFF"
+                        fill={colors.accent}
                         fontSize={9}
                         fontWeight="700"
                         fontFamily="monospace"
@@ -252,7 +252,7 @@ export function RiffTabView({
                           y={y - 7}
                           width={tw + 2}
                           height={14}
-                          fill="#12121e"
+                          fill={colors.cardSolid}
                           rx={2}
                         />
                         <SvgText
@@ -343,7 +343,7 @@ export function RiffTabView({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#12121e",
+    backgroundColor: colors.cardSolid,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",

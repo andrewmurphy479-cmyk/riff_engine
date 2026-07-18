@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { hapticSelect } from "../lib/haptics";
 import { borderRadius, colors, spacing } from "../theme/colors";
 
 interface Props {
@@ -17,8 +18,14 @@ export function BarSelector({ phraseTags, currentIndex, onSelect }: Props) {
           <TouchableOpacity
             key={i}
             style={[styles.chip, active && styles.chipActive]}
-            onPress={() => onSelect(i)}
+            onPress={() => {
+              hapticSelect();
+              onSelect(i);
+            }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`Bar ${i + 1}, phrase ${tag}`}
           >
             <Text style={[styles.barLabel, active && styles.labelActive]}>
               BAR {i + 1}

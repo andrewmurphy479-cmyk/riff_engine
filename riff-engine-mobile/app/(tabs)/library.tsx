@@ -19,6 +19,7 @@ import { RiffTabView } from "../../components/RiffTabView";
 import { PHRASE_LABELS } from "../../engine/riff/display";
 import { RiffSpec } from "../../engine/riff/spec";
 import { riffSpecToEvents, stripTechniques } from "../../engine/riff/toEvents";
+import { hapticTap } from "../../lib/haptics";
 import { useNewRiffStore } from "../../store/useNewRiffStore";
 import { borderRadius, colors, spacing } from "../../theme/colors";
 
@@ -161,6 +162,7 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
   }, []);
 
   const handlePlayToggle = useCallback(() => {
+    hapticTap();
     if (isPlaying) {
       audioEngine.stop();
       return;
@@ -209,6 +211,8 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
           onPress={onClose}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Close saved riff"
         >
           <Ionicons name="close" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
@@ -233,7 +237,11 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
                 onPress={handlePlayToggle}
                 activeOpacity={0.7}
               >
-                <Text style={styles.playGlyph}>{isPlaying ? "■" : "▶"}</Text>
+                <Ionicons
+                  name={isPlaying ? "stop" : "play"}
+                  size={14}
+                  color={colors.accent}
+                />
                 <Text style={styles.playLabel}>
                   {isPlaying ? "Stop" : "Play"}
                 </Text>
@@ -260,7 +268,7 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
                 onPress={onRemove}
                 activeOpacity={0.7}
               >
-                <Ionicons name="trash-outline" size={16} color="#FF4E78" />
+                <Ionicons name="trash-outline" size={16} color={colors.heart} />
                 <Text style={styles.removeLabel}>Remove</Text>
               </TouchableOpacity>
             </View>
@@ -403,11 +411,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(74, 122, 255, 0.35)",
   },
-  playGlyph: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: "700",
-  },
   playLabel: {
     color: colors.textPrimary,
     fontSize: 12,
@@ -437,12 +440,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: borderRadius.sm,
-    backgroundColor: "rgba(255, 78, 120, 0.1)",
+    backgroundColor: colors.heartBg,
     borderWidth: 1,
-    borderColor: "rgba(255, 78, 120, 0.3)",
+    borderColor: colors.heartBorder,
   },
   removeLabel: {
-    color: "#FF4E78",
+    color: colors.heart,
     fontSize: 12,
     fontWeight: "600",
   },

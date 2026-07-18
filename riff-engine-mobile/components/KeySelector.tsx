@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { hapticSelect } from "../lib/haptics";
 import { GUITAR_KEYS } from "../store/useNewRiffStore";
 import { borderRadius, colors, spacing } from "../theme/colors";
 
@@ -16,9 +17,15 @@ export function KeySelector({ value, locked, onChange, onToggleLock }: Props) {
     <View style={styles.row}>
       <TouchableOpacity
         style={styles.labelWrap}
-        onPress={onToggleLock}
+        onPress={() => {
+          hapticSelect();
+          onToggleLock();
+        }}
         activeOpacity={0.6}
         hitSlop={8}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: locked }}
+        accessibilityLabel="Lock key when generating"
       >
         <Ionicons
           name={locked ? "lock-closed" : "lock-open-outline"}
@@ -34,8 +41,14 @@ export function KeySelector({ value, locked, onChange, onToggleLock }: Props) {
             <TouchableOpacity
               key={k}
               style={[styles.chip, active && styles.chipActive]}
-              onPress={() => onChange(k)}
+              onPress={() => {
+                hapticSelect();
+                onChange(k);
+              }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Key of ${k}`}
             >
               <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
                 {k}

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { hapticSelect, hapticTap } from "../lib/haptics";
 import { colors, spacing } from "../theme/colors";
 
 interface Props {
@@ -38,9 +39,14 @@ export function RiffActionBar({
     <View style={styles.bar}>
       <TouchableOpacity
         style={styles.iconButton}
-        onPress={onGenerate}
+        onPress={() => {
+          hapticTap();
+          onGenerate();
+        }}
         disabled={disabled}
         activeOpacity={0.6}
+        accessibilityRole="button"
+        accessibilityLabel="Generate new riff"
       >
         <Ionicons name="shuffle" size={22} color={colors.textSecondary} />
         <Text style={styles.iconLabel}>new</Text>
@@ -48,9 +54,14 @@ export function RiffActionBar({
 
       <TouchableOpacity
         style={styles.iconButton}
-        onPress={onLoopToggle}
+        onPress={() => {
+          hapticSelect();
+          onLoopToggle();
+        }}
         disabled={disabled}
         activeOpacity={0.6}
+        accessibilityRole="button"
+        accessibilityLabel={isLooping ? "Turn looping off" : "Turn looping on"}
       >
         <Ionicons
           name="repeat"
@@ -64,9 +75,14 @@ export function RiffActionBar({
 
       <TouchableOpacity
         style={[styles.playButton, disabled && styles.playDisabled]}
-        onPress={onPlayToggle}
+        onPress={() => {
+          hapticTap();
+          onPlayToggle();
+        }}
         disabled={disabled}
         activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={isPlaying ? "Stop playback" : "Play riff"}
       >
         <Ionicons
           name={isPlaying ? "stop" : "play"}
@@ -79,14 +95,19 @@ export function RiffActionBar({
 
       <TouchableOpacity
         style={styles.iconButton}
-        onPress={onSaveToggle}
+        onPress={() => {
+          hapticSelect();
+          onSaveToggle();
+        }}
         disabled={disabled}
         activeOpacity={0.6}
+        accessibilityRole="button"
+        accessibilityLabel={isSaved ? "Remove riff from library" : "Save riff to library"}
       >
         <Ionicons
           name={isSaved ? "heart" : "heart-outline"}
           size={22}
-          color={isSaved ? "#FF4E78" : colors.textSecondary}
+          color={isSaved ? colors.heart : colors.textSecondary}
         />
         <Text style={styles.iconLabel}>{isSaved ? "saved" : "save"}</Text>
       </TouchableOpacity>
@@ -94,9 +115,14 @@ export function RiffActionBar({
       {onShare && (
         <TouchableOpacity
           style={styles.iconButton}
-          onPress={onShare}
+          onPress={() => {
+            hapticTap();
+            onShare();
+          }}
           disabled={disabled || isSharing}
           activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Share riff as audio"
         >
           {isSharing ? (
             <ActivityIndicator size="small" color={colors.accent} />

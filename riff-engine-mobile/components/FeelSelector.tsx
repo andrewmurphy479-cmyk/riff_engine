@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Feel } from "../engine/riff/rhythm";
+import { hapticSelect } from "../lib/haptics";
 import { borderRadius, colors, spacing } from "../theme/colors";
 
 const FEELS: readonly { key: Feel; label: string }[] = [
@@ -23,9 +24,15 @@ export function FeelSelector({ value, locked, onChange, onToggleLock }: Props) {
     <View style={styles.row}>
       <TouchableOpacity
         style={styles.labelWrap}
-        onPress={onToggleLock}
+        onPress={() => {
+          hapticSelect();
+          onToggleLock();
+        }}
         activeOpacity={0.6}
         hitSlop={8}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: locked }}
+        accessibilityLabel="Lock feel when generating"
       >
         <Ionicons
           name={locked ? "lock-closed" : "lock-open-outline"}
@@ -41,8 +48,14 @@ export function FeelSelector({ value, locked, onChange, onToggleLock }: Props) {
             <TouchableOpacity
               key={f.key}
               style={[styles.chip, active && styles.chipActive]}
-              onPress={() => onChange(active ? null : f.key)}
+              onPress={() => {
+                hapticSelect();
+                onChange(active ? null : f.key);
+              }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${f.label} feel`}
             >
               <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
                 {f.label}

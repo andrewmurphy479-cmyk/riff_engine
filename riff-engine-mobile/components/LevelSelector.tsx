@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Level } from "../engine/riff/rhythm";
+import { hapticSelect } from "../lib/haptics";
 import { LEVELS } from "../store/useNewRiffStore";
 import { borderRadius, colors, spacing } from "../theme/colors";
 
@@ -28,8 +29,14 @@ export function LevelSelector({ value, onChange }: Props) {
             <TouchableOpacity
               key={lvl}
               style={[styles.chip, active && styles.chipActive]}
-              onPress={() => onChange(lvl)}
+              onPress={() => {
+                hapticSelect();
+                onChange(lvl);
+              }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${LABELS[lvl]} level`}
             >
               <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
                 {LABELS[lvl]}

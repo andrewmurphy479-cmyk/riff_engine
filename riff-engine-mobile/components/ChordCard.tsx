@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useRef, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import Svg, { Line, Circle } from 'react-native-svg';
@@ -215,8 +216,10 @@ function CardFront({ chordId, meta, chordColor, strumKey, onPlayPreview, onFlip 
           }}
           activeOpacity={0.6}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Play ${chordId} chord`}
         >
-          <Text style={[cardStyles.playIcon, { color: chordColor.accent }]}>{'▶'}</Text>
+          <Ionicons name="play" size={12} color={chordColor.accent} style={cardStyles.playIcon} />
         </TouchableOpacity>
       </View>
 
@@ -245,6 +248,8 @@ function CardFront({ chordId, meta, chordColor, strumKey, onPlayPreview, onFlip 
         }}
         activeOpacity={0.6}
         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        accessibilityRole="button"
+        accessibilityLabel={`About the ${chordId} chord`}
       >
         <Text style={[cardStyles.flipBtnText, { color: chordColor.text }]}>i</Text>
       </TouchableOpacity>
@@ -586,7 +591,6 @@ const cardStyles = StyleSheet.create({
     alignItems: 'center',
   },
   playIcon: {
-    fontSize: 11,
     marginLeft: 2,
   },
   chordName: {

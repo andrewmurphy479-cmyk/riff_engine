@@ -1,22 +1,89 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  Image,
   Animated,
-  Easing,
   Dimensions,
+  Easing,
+  Image,
   StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { colors } from "../theme/colors";
 
-// Place your image at assets/rock-dog.png and update the path if needed
 const DOG_IMG = require("../assets/rock-dog.png");
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-export default function RiffologyLoadingScreen({ onFinish }) {
-  // Animated values
+// How long the returning-user fast path stays on screen in total.
+const FAST_FADE_IN_MS = 350;
+const FAST_HOLD_MS = 250;
+
+interface Props {
+  /**
+   * Full animated intro (first launch only). Returning users get a fast
+   * logo fade that hands off in well under a second.
+   */
+  fullIntro: boolean;
+  onFinish: () => void;
+}
+
+export default function LoadingScreen({ fullIntro, onFinish }: Props) {
+  return fullIntro ? (
+    <IntroSequence onFinish={onFinish} />
+  ) : (
+    <FastFade onFinish={onFinish} />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Returning users: wordmark fade, < 800ms total
+// ---------------------------------------------------------------------------
+
+function FastFade({ onFinish }: { onFinish: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: FAST_FADE_IN_MS,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+    const t = setTimeout(onFinish, FAST_FADE_IN_MS + FAST_HOLD_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <Animated.View style={{ opacity, alignItems: "center" }}>
+        <Text style={styles.title}>RIFF ENGINE</Text>
+        <View style={styles.decorLineStatic} />
+      </Animated.View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// First launch: full animated intro
+// ---------------------------------------------------------------------------
+
+interface NoteAnim {
+  opacity: Animated.Value;
+  translateY: Animated.Value;
+  scale: Animated.Value;
+}
+
+interface Sparkle {
+  opacity: Animated.Value;
+  left: number;
+  top: number;
+  size: number;
+  color: string;
+}
+
+function IntroSequence({ onFinish }: { onFinish: () => void }) {
   const dogOpacity = useRef(new Animated.Value(0)).current;
   const dogScale = useRef(new Animated.Value(0.9)).current;
   const strumRotate = useRef(new Animated.Value(0)).current;
@@ -33,35 +100,29 @@ export default function RiffologyLoadingScreen({ onFinish }) {
   const lineWidth = useRef(new Animated.Value(0)).current;
   const taglineOpacity = useRef(new Animated.Value(0)).current;
 
-  const dotOpacities = [
-    useRef(new Animated.Value(0.3)).current,
-    useRef(new Animated.Value(0.3)).current,
-    useRef(new Animated.Value(0.3)).current,
-  ];
-
-  // Note animations
   const [showNotes, setShowNotes] = useState(false);
-  const noteAnims = useRef(
+  const noteAnims = useRef<NoteAnim[]>(
     Array.from({ length: 5 }, () => ({
       opacity: new Animated.Value(0),
       translateY: new Animated.Value(0),
       scale: new Animated.Value(0.5),
-    }))
+    })),
   ).current;
 
-  // Sparkle animations
-  const sparkles = useRef(
+  // Cool blue sparkles to match the app accent.
+  const sparkles = useRef<Sparkle[]>(
     Array.from({ length: 15 }, () => ({
       opacity: new Animated.Value(Math.random()),
       left: Math.random() * SCREEN_W,
       top: Math.random() * SCREEN_H,
       size: 3 + Math.random() * 4,
-      color: `rgba(255, ${180 + Math.floor(Math.random() * 75)}, ${80 + Math.floor(Math.random() * 60)}, ${0.4 + Math.random() * 0.4})`,
-    }))
+      color: `rgba(${90 + Math.floor(Math.random() * 60)}, ${
+        130 + Math.floor(Math.random() * 60)
+      }, 255, ${0.4 + Math.random() * 0.4})`,
+    })),
   ).current;
 
   useEffect(() => {
-    // Sparkle loop
     sparkles.forEach((s) => {
       const duration = 2000 + Math.random() * 3000;
       Animated.loop(
@@ -76,11 +137,10 @@ export default function RiffologyLoadingScreen({ onFinish }) {
             duration: duration / 2,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     });
 
-    // Main sequence
     const sequence = Animated.sequence([
       // Phase 0: Fade in dog
       Animated.parallel([
@@ -97,15 +157,15 @@ export default function RiffologyLoadingScreen({ onFinish }) {
         }),
       ]),
 
-      // Phase 1: Strum + glow + notes
+      // Phase 1: Strum + glow
       Animated.parallel([
         Animated.timing(glowOpacity, {
           toValue: 1,
           duration: 400,
           useNativeDriver: true,
         }),
-        Animated.sequence([
-          ...Array.from({ length: 3 }, () =>
+        Animated.sequence(
+          Array.from({ length: 3 }, () =>
             Animated.sequence([
               Animated.timing(strumRotate, {
                 toValue: -3,
@@ -122,9 +182,9 @@ export default function RiffologyLoadingScreen({ onFinish }) {
                 duration: 75,
                 useNativeDriver: true,
               }),
-            ])
+            ]),
           ),
-        ]),
+        ),
       ]),
 
       // Phase 2: Rock fist
@@ -148,7 +208,6 @@ export default function RiffologyLoadingScreen({ onFinish }) {
         }),
       ]),
 
-      // Small pause
       Animated.delay(300),
 
       // Phase 3: Title
@@ -187,19 +246,15 @@ export default function RiffologyLoadingScreen({ onFinish }) {
           useNativeDriver: true,
         }),
       ]),
+
+      // Let the tagline breathe, then hand off — no long dead wait.
+      Animated.delay(400),
     ]);
 
-    sequence.start(() => {
-      // Start loading dots loop
-      startLoadingDots();
-      // Optional callback when animation finishes
-      if (onFinish) {
-        setTimeout(onFinish, 2000);
-      }
-    });
+    sequence.start(onFinish);
 
     // Notes animation (fire after strum starts)
-    setTimeout(() => {
+    const notesTimer = setTimeout(() => {
       setShowNotes(true);
       noteAnims.forEach((n, i) => {
         Animated.sequence([
@@ -232,27 +287,10 @@ export default function RiffologyLoadingScreen({ onFinish }) {
         ]).start();
       });
     }, 600);
-  }, []);
 
-  const startLoadingDots = () => {
-    dotOpacities.forEach((dot, i) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 200),
-          Animated.timing(dot, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(dot, {
-            toValue: 0.3,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    });
-  };
+    return () => clearTimeout(notesTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const notes = ["🎵", "🎶", "🎸", "🎵", "🎶"];
 
@@ -294,33 +332,27 @@ export default function RiffologyLoadingScreen({ onFinish }) {
         }}
       >
         {/* Glow */}
-        <Animated.View
-          style={[
-            styles.glow,
-            { opacity: glowOpacity },
-          ]}
-        />
+        <Animated.View style={[styles.glow, { opacity: glowOpacity }]} />
 
-        {/* Dog image with gradient fade using a mask-like overlay */}
+        {/* Dog image with gradient-faded edges */}
         <View style={styles.imageContainer}>
           <Image source={DOG_IMG} style={styles.dogImage} resizeMode="cover" />
-          {/* Fade edges with gradient overlays */}
           <LinearGradient
-            colors={[BG_COLOR, "transparent"]}
+            colors={[colors.background, "transparent"]}
             style={styles.fadeTop}
           />
           <LinearGradient
-            colors={["transparent", BG_COLOR]}
+            colors={["transparent", colors.background]}
             style={styles.fadeBottom}
           />
           <LinearGradient
-            colors={[BG_COLOR, "transparent"]}
+            colors={[colors.background, "transparent"]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={styles.fadeLeft}
           />
           <LinearGradient
-            colors={["transparent", BG_COLOR]}
+            colors={["transparent", colors.background]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={styles.fadeRight}
@@ -356,10 +388,7 @@ export default function RiffologyLoadingScreen({ onFinish }) {
             right: -10,
             fontSize: 48,
             opacity: fistOpacity,
-            transform: [
-              { scale: fistScale },
-              { rotate: fistRotateInterpolate },
-            ],
+            transform: [{ scale: fistScale }, { rotate: fistRotateInterpolate }],
           }}
         >
           🤘
@@ -372,47 +401,25 @@ export default function RiffologyLoadingScreen({ onFinish }) {
           marginTop: 28,
           alignItems: "center",
           opacity: titleOpacity,
-          transform: [
-            { translateY: titleTranslateY },
-            { scale: titleScale },
-          ],
+          transform: [{ translateY: titleTranslateY }, { scale: titleScale }],
         }}
       >
-        <Text style={styles.title}>RIFFOLOGY</Text>
+        <Text style={styles.title}>RIFF ENGINE</Text>
 
-        {/* Decorative line */}
-        <Animated.View
-          style={[
-            styles.decorLine,
-            { width: lineWidth },
-          ]}
-        />
+        <Animated.View style={[styles.decorLine, { width: lineWidth }]} />
 
-        {/* Tagline */}
         <Animated.Text style={[styles.tagline, { opacity: taglineOpacity }]}>
           LET'S SHRED
         </Animated.Text>
       </Animated.View>
-
-      {/* Loading dots */}
-      <View style={styles.dotsContainer}>
-        {dotOpacities.map((opacity, i) => (
-          <Animated.View
-            key={`dot-${i}`}
-            style={[styles.dot, { opacity }]}
-          />
-        ))}
-      </View>
     </View>
   );
 }
 
-const BG_COLOR = "#0d0805";
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BG_COLOR,
+    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -422,7 +429,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: "rgba(255, 140, 40, 0.15)",
+    backgroundColor: "rgba(74, 122, 255, 0.15)",
     top: 30,
     alignSelf: "center",
   },
@@ -465,37 +472,32 @@ const styles = StyleSheet.create({
     width: 60,
   },
   title: {
-    fontSize: 48,
+    fontSize: 40,
     fontWeight: "900",
-    letterSpacing: 6,
-    color: "#FF8C00",
+    letterSpacing: 5,
+    color: colors.accent,
     fontStyle: "italic",
-    textShadowColor: "rgba(255, 100, 0, 0.6)",
+    textShadowColor: "rgba(74, 122, 255, 0.6)",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 15,
   },
   decorLine: {
     height: 2,
-    backgroundColor: "#FF8C00",
+    backgroundColor: colors.accent,
+    marginTop: 8,
+    opacity: 0.6,
+  },
+  decorLineStatic: {
+    height: 2,
+    width: 200,
+    backgroundColor: colors.accent,
     marginTop: 8,
     opacity: 0.6,
   },
   tagline: {
-    color: "rgba(255, 200, 140, 0.7)",
+    color: "rgba(160, 190, 255, 0.7)",
     fontSize: 13,
     letterSpacing: 4,
     marginTop: 6,
-  },
-  dotsContainer: {
-    position: "absolute",
-    bottom: 60,
-    flexDirection: "row",
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#FF8C00",
-    marginHorizontal: 4,
   },
 });

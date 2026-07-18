@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../theme/colors';
-import RiffologyLoadingScreen from '../components/RiffologyLoadingScreen';
+import LoadingScreen from '../components/LoadingScreen';
 import { usePracticeStore } from '../store/usePracticeStore';
 
 /** Track when the persisted practice store has finished rehydrating. */
@@ -25,13 +26,23 @@ export default function RootLayout() {
   const hydrated = usePracticeHydrated();
   const onboardingComplete = usePracticeStore((s) => s.onboardingComplete);
 
-  // Hold the splash until both the intro timer and store hydration are done,
-  // so returning users never flash the onboarding screen.
+  // Hold the splash until both the intro and store hydration are done, so
+  // returning users never flash the onboarding screen. Until hydration we
+  // don't know if this is a first launch, so show a bare background (matches
+  // the native splash); hydration is near-instant, then first-launch users
+  // get the full intro and returning users a sub-second fade.
   if (isLoading || !hydrated) {
     return (
       <>
         <StatusBar style="light" />
-        <RiffologyLoadingScreen onFinish={() => setIsLoading(false)} />
+        {hydrated ? (
+          <LoadingScreen
+            fullIntro={!onboardingComplete}
+            onFinish={() => setIsLoading(false)}
+          />
+        ) : (
+          <View style={{ flex: 1, backgroundColor: colors.background }} />
+        )}
       </>
     );
   }
@@ -58,6 +69,10 @@ export default function RootLayout() {
           <Stack.Screen
             name="(tabs)"
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="settings"
+            options={{ title: 'Settings', presentation: 'modal' }}
           />
         </Stack.Protected>
         <Stack.Protected guard={!onboardingComplete}>

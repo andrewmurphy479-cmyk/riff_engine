@@ -18,6 +18,7 @@ import { RiffFretboardView } from "../../components/RiffFretboardView";
 import { buildRiffSummary, PHRASE_LABELS } from "../../engine/riff/display";
 import { fretRangeForBar } from "../../engine/riff/fretboard";
 import { riffSpecToEvents, stripTechniques } from "../../engine/riff/toEvents";
+import { hapticSelect, hapticTap } from "../../lib/haptics";
 import { useNewRiffStore } from "../../store/useNewRiffStore";
 import { borderRadius, colors, spacing } from "../../theme/colors";
 
@@ -207,8 +208,15 @@ export default function ExploreScreen() {
             styles.playTile,
             isPlaying && playMode === "riff" && styles.playTileActive,
           ]}
-          onPress={handlePlayRiff}
+          onPress={() => {
+            hapticTap();
+            handlePlayRiff();
+          }}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={
+            isPlaying && playMode === "riff" ? "Stop riff" : "Play full riff"
+          }
         >
           <Ionicons
             name={isPlaying && playMode === "riff" ? "stop" : "play"}
@@ -256,8 +264,14 @@ function Toggle({ icon, label, active, onPress }: ToggleProps) {
   return (
     <TouchableOpacity
       style={[styles.tile, active && styles.tileActive]}
-      onPress={onPress}
+      onPress={() => {
+        hapticSelect();
+        onPress();
+      }}
       activeOpacity={0.7}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: active }}
+      accessibilityLabel={label}
     >
       <Ionicons
         name={icon}

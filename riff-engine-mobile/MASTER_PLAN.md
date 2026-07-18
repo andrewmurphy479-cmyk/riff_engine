@@ -89,35 +89,35 @@ One scale (minor pentatonic + optional b5), and intermediate players get the sam
 ## Phase B — Make practicing feel great (UX + audio experience)
 
 ### B1. Playback experience (highest priority in phase)
-- [ ] **Playhead on the Create tab.** `onStepPlay` callback already exists and Explore uses it; Create's `RiffTabView` renders static tab with no cursor. Wire it through — this is table stakes for a practice app.
-- [ ] **Count-in + metronome.** Synthesize a click (two pitched ticks — the KS synth or a simple sine burst), 1-bar count-in before play, optional click during playback. Already on your Ideas list.
-- [ ] **Live tempo.** Tempo change currently requires stop/replay. At minimum, restart seamlessly on tempo change; ideally recompute schedule live.
-- [ ] Explore tab: add full-riff playback (currently the prominent play tile plays only the selected bar — confusing).
+- [x] **Playhead on the Create tab.** `onStepPlay` callback already exists and Explore uses it; Create's `RiffTabView` renders static tab with no cursor. Wire it through — this is table stakes for a practice app.
+- [x] **Count-in + metronome.** Synthesize a click (two pitched ticks — the KS synth or a simple sine burst), 1-bar count-in before play, optional click during playback. Already on your Ideas list.
+- [x] **Live tempo.** Tempo change currently requires stop/replay. At minimum, restart seamlessly on tempo change; ideally recompute schedule live.
+- [x] Explore tab: add full-riff playback (currently the prominent play tile plays only the selected bar — confusing).
 
 ### B2. Share/export (built and unwired — a free viral loop)
 `AudioExporter.exportToWav` is complete (reverb, compression, normalization) and `expo-sharing` is installed. **No UI calls either.**
-- [ ] Add "Share riff" to Create + Library: renders WAV → share sheet. Watermark idea for later: a spoken/tag audio bumper for free tier.
+- [x] Add "Share riff" to Create + Library: renders WAV → share sheet. Watermark idea for later: a spoken/tag audio bumper for free tier.
 - [ ] Stretch: share a riff *card* (image of the tab + branding) alongside audio — image shares travel further than audio files.
 
 ### B3. Design system consolidation
-- [ ] One card style: migrate the hardcoded `#12121e` cards (RiffTabView, RiffContextCard, ExploreIntroCard) to theme `colors.card` glass style, or promote `#12121e` into the theme — pick one, apply everywhere.
-- [ ] One accent: reconcile `#FF4E78` vs `colors.error`.
-- [ ] Adopt `typography`/`spacing` tokens in the ~6 components using raw values.
-- [ ] Decide on `components/ui/` kit: either adopt `Button`/`Card`/`ChipSelector` (the 4 selector components each re-implement the same chip pattern) or delete the kit.
-- [ ] Replace the `Alert.alert` bar-tap menu on Create with a designed bottom sheet.
-- [ ] Replace text glyphs (`▶`/`■`) in Library/Armory with Ionicons like everywhere else.
+- [x] One card style: promoted `#12121e` into the theme as `colors.cardSolid`; RiffTabView, RiffContextCard, RiffBarMetaStrip, ExploreIntroCard all use it.
+- [x] One accent: `#FF4E78` promoted to `colors.heart` (+`heartBg`/`heartBorder`) for save/remove affordances; `colors.error` reserved for failure states.
+- [ ] Adopt `typography`/`spacing` tokens in the ~6 components using raw values. *(Remaining: raw fontSize/paddings persist in several components — low-risk cleanup, fold into future touches.)*
+- [x] Decide on `components/ui/` kit: deleted the orphaned `Button`/`Card`/`ChipSelector`/`Slider` (never imported); kept `MetaPair` (used by RiffBarMetaStrip).
+- [x] Replace the `Alert.alert` bar-tap menu on Create with a designed bottom sheet (`components/BarActionSheet.tsx`).
+- [x] Replace text glyphs (`▶`/`■`) in Library/Armory with Ionicons like everywhere else.
 
 ### B4. Branding & first impression
-- [ ] **Pick the name.** App is "Riff Engine"; the splash screams "RIFFOLOGY / LET'S SHRED" with different background color. One brand, everywhere.
-- [ ] Cut the cold-start animation for returning users (currently a scripted animation + `setTimeout(2000)` on *every* launch). First-launch: full intro. Returning: fast fade, < 800ms.
-- [ ] Convert `RiffologyLoadingScreen.js` → TS while touching it (only .js file in the codebase).
+- [x] **Pick the name.** "Riff Engine" everywhere — splash now says RIFF ENGINE on the theme background/accent (blue, `#0B0B0F`).
+- [x] Cut the cold-start animation for returning users. First-launch: full intro (gated on `!onboardingComplete`). Returning: ~600ms wordmark fade; the dead `setTimeout(2000)` is gone.
+- [x] Convert `RiffologyLoadingScreen.js` → TS (`components/LoadingScreen.tsx`); no .js source files remain.
 
 ### B5. Settings screen (missing entirely)
-- [ ] New route: profile (level/genres, re-run taste check via existing `resetOnboarding()`), audio prefs (metronome on/off, count-in), about/version, privacy policy link, "restore purchases" placeholder for Phase E.
+- [x] New route: `app/settings.tsx` (modal, gear in Today's header) — profile (level/genres, redo setup via `resetOnboarding()`), audio prefs (metronome/count-in switches), version, privacy-policy link (placeholder URL), "restore purchases" placeholder for Phase E.
 
 ### B6. Feel & accessibility
-- [ ] `expo-haptics`: light impact on play/stop, selection ticks on chips/steppers, success notification on daily-goal completion. Cheap, huge perceived quality.
-- [ ] `accessibilityLabel`/`Role` on all icon-only controls (play/stop, done checks, locks, tempo ±) — currently zero in the app.
+- [x] `expo-haptics` (`lib/haptics.ts` wrappers): light impact on play/stop/share/new, selection ticks on chips/steppers/locks/toggles, success notification when a mark-done completes the daily goal.
+- [x] `accessibilityLabel`/`Role` on all icon-only controls (play/stop, done checks, locks, tempo ±, closes, chord card, settings gear, explore tiles).
 
 ---
 
@@ -178,8 +178,8 @@ expo-av is deprecated and **removed in SDK 55** — this is a when-not-if migrat
 ```
 Sprint 1  A0 unfreeze + A1 dynamics + A2 palm-mute chugs        ← DONE
 Sprint 2  A3 power chords + A4 templates/swing                   ← DONE (incl. the D4 practice-store migrate prereq)
-Sprint 3  B1 playhead/metronome/count-in + B2 share export       ← practice-app table stakes
-Sprint 4  B3 design consolidation + B4 branding + B5 settings + B6 haptics
+Sprint 3  B1 playhead/metronome/count-in + B2 share export       ← DONE
+Sprint 4  B3 design consolidation + B4 branding + B5 settings + B6 haptics  ← DONE
 Sprint 5  D1 blockers + D2 expo-audio + D3 Sentry/analytics + D4 tests/CI
           → TestFlight beta gate: do guitarists like the sound?
 Sprint 6  C retention loop (notifications, streak insurance, recap)

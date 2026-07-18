@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
-import { colors } from '../../theme/colors';
+import { router, Tabs } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+import { colors, spacing } from '../../theme/colors';
 
 export const unstable_settings = {
   initialRouteName: 'today',
@@ -34,6 +35,21 @@ export default function TabsLayout() {
           tabBarLabel: 'Today',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="today-outline" size={size} color={color} />
+          ),
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => router.push('/settings')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ marginRight: spacing.lg }}
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+            >
+              <Ionicons
+                name="settings-outline"
+                size={22}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
           ),
         }}
       />

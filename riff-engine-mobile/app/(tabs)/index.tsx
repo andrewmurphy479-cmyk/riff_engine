@@ -7,6 +7,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { BarActionSheet } from "../../components/BarActionSheet";
 import { FeelSelector } from "../../components/FeelSelector";
 import { KeySelector } from "../../components/KeySelector";
 import { LevelSelector } from "../../components/LevelSelector";
@@ -50,6 +51,7 @@ export default function HomeScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [activeStep, setActiveStep] = useState<number | null>(null);
+  const [barSheetIdx, setBarSheetIdx] = useState<number | null>(null);
 
   // Bar loops re-base steps to 0-15; this offset maps them back onto the
   // full tab so the playhead lands in the right bar.
@@ -168,26 +170,16 @@ export default function HomeScreen() {
     }
   }, [currentRiff, isSharing, isPlaying, audioEngine, showEmbellishments, effectiveBpm]);
 
-  const handleBarTap = useCallback(
+  const handleBarTap = useCallback((barIdx: number) => {
+    setBarSheetIdx(barIdx);
+  }, []);
+
+  const handleRerollBar = useCallback(
     (barIdx: number) => {
-      Alert.alert(
-        `Bar ${barIdx + 1}`,
-        undefined,
-        [
-          { text: "Loop this bar", onPress: () => handleLoopBar(barIdx) },
-          {
-            text: "Re-roll this bar",
-            onPress: () => {
-              if (isPlaying) audioEngine.stop();
-              rerollBar(barIdx);
-            },
-          },
-          { text: "Cancel", style: "cancel" },
-        ],
-        { cancelable: true },
-      );
+      if (isPlaying) audioEngine.stop();
+      rerollBar(barIdx);
     },
-    [handleLoopBar, rerollBar, isPlaying, audioEngine],
+    [isPlaying, audioEngine, rerollBar],
   );
 
   const isSaved = currentRiff
@@ -249,6 +241,13 @@ export default function HomeScreen() {
         onSaveToggle={toggleSaveCurrent}
         onLoopToggle={handleLoopToggle}
         onShare={handleShare}
+      />
+
+      <BarActionSheet
+        barIndex={barSheetIdx}
+        onLoopBar={handleLoopBar}
+        onRerollBar={handleRerollBar}
+        onClose={() => setBarSheetIdx(null)}
       />
     </SafeAreaView>
   );

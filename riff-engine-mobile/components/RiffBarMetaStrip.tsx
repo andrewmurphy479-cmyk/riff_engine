@@ -7,7 +7,7 @@ import {
   snakeCaseToTitle,
 } from "../engine/riff/display";
 import { RiffSpec } from "../engine/riff/spec";
-import { spacing } from "../theme/colors";
+import { colors, spacing } from "../theme/colors";
 import { MetaPair } from "./ui/MetaPair";
 
 interface Props {
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     padding: spacing.md,
-    backgroundColor: "#12121e",
+    backgroundColor: colors.cardSolid,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
