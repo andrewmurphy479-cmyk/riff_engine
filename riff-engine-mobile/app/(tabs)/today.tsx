@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import {
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useAudioEngine } from "../../audio/AudioEngine";
+import { RiffTabView } from "../../components/RiffTabView";
 import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { riffSpecToEvents } from "../../engine/riff/toEvents";
 import {
@@ -36,6 +38,8 @@ export default function TodayScreen() {
   const addPracticeSeconds = usePracticeStore((s) => s.addPracticeSeconds);
 
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
+  const [activeStep, setActiveStep] = useState<number | null>(null);
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
   const playStartRef = useRef<number | null>(null);
 
   const flushSeconds = useCallback(() => {
@@ -53,7 +57,9 @@ export default function TodayScreen() {
     onPlaybackEnd: () => {
       flushSeconds();
       setPlayingIdx(null);
+      setActiveStep(null);
     },
+    onStepPlay: (step) => setActiveStep(step < 0 ? null : step),
   });
 
   // Roll a fresh session over at day boundaries whenever the tab regains focus.
@@ -163,7 +169,11 @@ export default function TodayScreen() {
                 />
               </TouchableOpacity>
 
-              <View style={styles.riffMeta}>
+              <TouchableOpacity
+                style={styles.riffMeta}
+                onPress={() => setOpenIdx(idx)}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.riffTitle}>Riff {idx + 1}</Text>
                 <Text style={styles.riffSub}>
                   Key {riff.key}
@@ -172,7 +182,8 @@ export default function TodayScreen() {
                     : ""}
                   {` · ${riff.tempo_bpm} bpm`}
                 </Text>
-              </View>
+                <Text style={styles.riffOpenHint}>View tab ›</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.doneBtn, done && styles.doneBtnActive]}
@@ -204,6 +215,94 @@ export default function TodayScreen() {
           <Text style={styles.regenText}>New set of riffs</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Practice sheet: full tab + playhead for the tapped riff */}
+      <Modal
+        visible={openIdx !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setOpenIdx(null)}
+      >
+        {openIdx !== null && session.riffs[openIdx] && (
+          <SafeAreaView style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <TouchableOpacity
+                onPress={() => setOpenIdx(null)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <Text style={styles.sheetTitle}>Riff {openIdx + 1}</Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <RiffTabView
+                riff={session.riffs[openIdx]}
+                activeStep={playingIdx === openIdx ? activeStep : null}
+                footer={
+                  <View style={styles.sheetControls}>
+                    <TouchableOpacity
+                      style={[
+                        styles.sheetPlayBtn,
+                        playingIdx === openIdx && styles.sheetPlayBtnActive,
+                      ]}
+                      onPress={() => handlePlay(openIdx)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name={playingIdx === openIdx ? "stop" : "play"}
+                        size={18}
+                        color={colors.white}
+                      />
+                      <Text style={styles.sheetPlayLabel}>
+                        {playingIdx === openIdx ? "Stop" : "Play"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.sheetDoneBtn,
+                        session.completed[openIdx] && styles.sheetDoneBtnActive,
+                      ]}
+                      onPress={() => markRiffPracticed(openIdx)}
+                      disabled={session.completed[openIdx]}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name={
+                          session.completed[openIdx]
+                            ? "checkmark-circle"
+                            : "checkmark"
+                        }
+                        size={18}
+                        color={
+                          session.completed[openIdx]
+                            ? colors.success
+                            : colors.textPrimary
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.sheetDoneLabel,
+                          session.completed[openIdx] &&
+                            styles.sheetDoneLabelActive,
+                        ]}
+                      >
+                        {session.completed[openIdx] ? "Done" : "Mark done"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                }
+              />
+            </ScrollView>
+          </SafeAreaView>
+        )}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -312,6 +411,73 @@ const styles = StyleSheet.create({
   riffMeta: { flex: 1 },
   riffTitle: { ...typography.h3, color: colors.textPrimary },
   riffSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
+  riffOpenHint: {
+    ...typography.small,
+    color: colors.accent,
+    marginTop: 4,
+    fontWeight: "600",
+  },
+  sheet: { flex: 1, backgroundColor: colors.background },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sheetTitle: {
+    ...typography.h3,
+    color: colors.textPrimary,
+  },
+  sheetScroll: { flex: 1 },
+  sheetContent: { paddingVertical: spacing.md },
+  sheetControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  sheetPlayBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.accent,
+  },
+  sheetPlayBtnActive: { backgroundColor: colors.error },
+  sheetPlayLabel: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  sheetDoneBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sheetDoneBtnActive: {
+    borderColor: "rgba(34, 197, 94, 0.4)",
+    backgroundColor: "rgba(34, 197, 94, 0.08)",
+  },
+  sheetDoneLabel: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  sheetDoneLabelActive: { color: colors.success },
   doneBtn: { padding: spacing.xs },
   doneBtnActive: {},
   regenBtn: {

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
 import { Audio } from 'expo-av';
 import { TabEvent, GuitarString, Technique } from '../engine/types';
 import { SamplePlayer } from './SamplePlayer';
@@ -337,5 +337,11 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
     await AudioEngine.initialize();
   }, []);
 
-  return { play, stop, setLoop, initialize };
+  // Stable object identity: screens put this in effect deps (Today's focus
+  // effect stops audio in its cleanup) — a fresh object every render would
+  // re-fire those effects per render and kill playback as soon as it starts.
+  return useMemo(
+    () => ({ play, stop, setLoop, initialize }),
+    [play, stop, setLoop, initialize],
+  );
 }
