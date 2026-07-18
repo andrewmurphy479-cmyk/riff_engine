@@ -129,6 +129,7 @@ One scale (minor pentatonic + optional b5), and intermediate players get the sam
 - [ ] **Practice history calendar** on Today or a stats detail screen (data already tracked: `daysPracticed`, day-keys).
 - [ ] **Level velocity:** after N sessions at high completion, suggest level-up (from your next-features notes).
 - [ ] Vary the daily session recipe: e.g., 1 riff from your best feel, 2 from preferred, 1 "stretch" riff one level up — gives sessions narrative ("today's stretch riff").
+- [ ] **Overflow rewards** (user request 2026-07-18): completing riffs beyond the daily goal currently earns nothing — the session has a built-in stopping point right where momentum peaks. Ideas: bonus riffs appear after goal met ("keep going?" + fresh riff), an overflow counter on the goal card ("4/4 +2"), weekly bonus-riff tally feeding the recap card, and/or streak insurance earned via overflow (ties into the freeze mechanic above).
 
 ---
 
