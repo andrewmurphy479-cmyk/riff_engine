@@ -188,7 +188,7 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.footerNote}>Riff Engine · practice riffs, daily</Text>
+      <Text style={styles.footerNote}>Riffology · practice riffs, daily</Text>
     </ScrollView>
   );
 }

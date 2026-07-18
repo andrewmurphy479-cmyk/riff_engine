@@ -9,65 +9,17 @@ import {
   View,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { colors } from "../theme/colors";
 
 const DOG_IMG = require("../assets/rock-dog.png");
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-// How long the returning-user fast path stays on screen in total.
-const FAST_FADE_IN_MS = 350;
-const FAST_HOLD_MS = 250;
+const BG_COLOR = "#0d0805";
+const BRAND_ORANGE = "#FF8C00";
 
 interface Props {
-  /**
-   * Full animated intro (first launch only). Returning users get a fast
-   * logo fade that hands off in well under a second.
-   */
-  fullIntro: boolean;
   onFinish: () => void;
 }
-
-export default function LoadingScreen({ fullIntro, onFinish }: Props) {
-  return fullIntro ? (
-    <IntroSequence onFinish={onFinish} />
-  ) : (
-    <FastFade onFinish={onFinish} />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Returning users: wordmark fade, < 800ms total
-// ---------------------------------------------------------------------------
-
-function FastFade({ onFinish }: { onFinish: () => void }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(opacity, {
-      toValue: 1,
-      duration: FAST_FADE_IN_MS,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-    const t = setTimeout(onFinish, FAST_FADE_IN_MS + FAST_HOLD_MS);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <View style={styles.container}>
-      <Animated.View style={{ opacity, alignItems: "center" }}>
-        <Text style={styles.title}>RIFF ENGINE</Text>
-        <View style={styles.decorLineStatic} />
-      </Animated.View>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// First launch: full animated intro
-// ---------------------------------------------------------------------------
 
 interface NoteAnim {
   opacity: Animated.Value;
@@ -83,7 +35,7 @@ interface Sparkle {
   color: string;
 }
 
-function IntroSequence({ onFinish }: { onFinish: () => void }) {
+export default function RiffologyLoadingScreen({ onFinish }: Props) {
   const dogOpacity = useRef(new Animated.Value(0)).current;
   const dogScale = useRef(new Animated.Value(0.9)).current;
   const strumRotate = useRef(new Animated.Value(0)).current;
@@ -100,6 +52,12 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
   const lineWidth = useRef(new Animated.Value(0)).current;
   const taglineOpacity = useRef(new Animated.Value(0)).current;
 
+  const dotOpacities = [
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+    useRef(new Animated.Value(0.3)).current,
+  ];
+
   const [showNotes, setShowNotes] = useState(false);
   const noteAnims = useRef<NoteAnim[]>(
     Array.from({ length: 5 }, () => ({
@@ -109,20 +67,21 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
     })),
   ).current;
 
-  // Cool blue sparkles to match the app accent.
+  // Warm orange sparkles to match the brand.
   const sparkles = useRef<Sparkle[]>(
     Array.from({ length: 15 }, () => ({
       opacity: new Animated.Value(Math.random()),
       left: Math.random() * SCREEN_W,
       top: Math.random() * SCREEN_H,
       size: 3 + Math.random() * 4,
-      color: `rgba(${90 + Math.floor(Math.random() * 60)}, ${
-        130 + Math.floor(Math.random() * 60)
-      }, 255, ${0.4 + Math.random() * 0.4})`,
+      color: `rgba(255, ${180 + Math.floor(Math.random() * 75)}, ${
+        80 + Math.floor(Math.random() * 60)
+      }, ${0.4 + Math.random() * 0.4})`,
     })),
   ).current;
 
   useEffect(() => {
+    // Sparkle loop
     sparkles.forEach((s) => {
       const duration = 2000 + Math.random() * 3000;
       Animated.loop(
@@ -141,6 +100,7 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
       ).start();
     });
 
+    // Main sequence
     const sequence = Animated.sequence([
       // Phase 0: Fade in dog
       Animated.parallel([
@@ -157,7 +117,7 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
         }),
       ]),
 
-      // Phase 1: Strum + glow
+      // Phase 1: Strum + glow + notes
       Animated.parallel([
         Animated.timing(glowOpacity, {
           toValue: 1,
@@ -208,6 +168,7 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
         }),
       ]),
 
+      // Small pause
       Animated.delay(300),
 
       // Phase 3: Title
@@ -246,12 +207,13 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
           useNativeDriver: true,
         }),
       ]),
-
-      // Let the tagline breathe, then hand off — no long dead wait.
-      Animated.delay(400),
     ]);
 
-    sequence.start(onFinish);
+    let finishTimer: ReturnType<typeof setTimeout> | undefined;
+    sequence.start(() => {
+      startLoadingDots();
+      finishTimer = setTimeout(onFinish, 2000);
+    });
 
     // Notes animation (fire after strum starts)
     const notesTimer = setTimeout(() => {
@@ -288,9 +250,32 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
       });
     }, 600);
 
-    return () => clearTimeout(notesTimer);
+    return () => {
+      clearTimeout(notesTimer);
+      if (finishTimer) clearTimeout(finishTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const startLoadingDots = () => {
+    dotOpacities.forEach((dot, i) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 200),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0.3,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ]),
+      ).start();
+    });
+  };
 
   const notes = ["🎵", "🎶", "🎸", "🎵", "🎶"];
 
@@ -338,21 +323,21 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
         <View style={styles.imageContainer}>
           <Image source={DOG_IMG} style={styles.dogImage} resizeMode="cover" />
           <LinearGradient
-            colors={[colors.background, "transparent"]}
+            colors={[BG_COLOR, "transparent"]}
             style={styles.fadeTop}
           />
           <LinearGradient
-            colors={["transparent", colors.background]}
+            colors={["transparent", BG_COLOR]}
             style={styles.fadeBottom}
           />
           <LinearGradient
-            colors={[colors.background, "transparent"]}
+            colors={[BG_COLOR, "transparent"]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={styles.fadeLeft}
           />
           <LinearGradient
-            colors={["transparent", colors.background]}
+            colors={["transparent", BG_COLOR]}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={styles.fadeRight}
@@ -404,14 +389,23 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
           transform: [{ translateY: titleTranslateY }, { scale: titleScale }],
         }}
       >
-        <Text style={styles.title}>RIFF ENGINE</Text>
+        <Text style={styles.title}>RIFFOLOGY</Text>
 
+        {/* Decorative line */}
         <Animated.View style={[styles.decorLine, { width: lineWidth }]} />
 
+        {/* Tagline */}
         <Animated.Text style={[styles.tagline, { opacity: taglineOpacity }]}>
           LET'S SHRED
         </Animated.Text>
       </Animated.View>
+
+      {/* Loading dots */}
+      <View style={styles.dotsContainer}>
+        {dotOpacities.map((opacity, i) => (
+          <Animated.View key={`dot-${i}`} style={[styles.dot, { opacity }]} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -419,7 +413,7 @@ function IntroSequence({ onFinish }: { onFinish: () => void }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: BG_COLOR,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -429,7 +423,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: "rgba(74, 122, 255, 0.15)",
+    backgroundColor: "rgba(255, 140, 40, 0.15)",
     top: 30,
     alignSelf: "center",
   },
@@ -472,32 +466,37 @@ const styles = StyleSheet.create({
     width: 60,
   },
   title: {
-    fontSize: 40,
+    fontSize: 48,
     fontWeight: "900",
-    letterSpacing: 5,
-    color: colors.accent,
+    letterSpacing: 6,
+    color: BRAND_ORANGE,
     fontStyle: "italic",
-    textShadowColor: "rgba(74, 122, 255, 0.6)",
+    textShadowColor: "rgba(255, 100, 0, 0.6)",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 15,
   },
   decorLine: {
     height: 2,
-    backgroundColor: colors.accent,
-    marginTop: 8,
-    opacity: 0.6,
-  },
-  decorLineStatic: {
-    height: 2,
-    width: 200,
-    backgroundColor: colors.accent,
+    backgroundColor: BRAND_ORANGE,
     marginTop: 8,
     opacity: 0.6,
   },
   tagline: {
-    color: "rgba(160, 190, 255, 0.7)",
+    color: "rgba(255, 200, 140, 0.7)",
     fontSize: 13,
     letterSpacing: 4,
     marginTop: 6,
+  },
+  dotsContainer: {
+    position: "absolute",
+    bottom: 60,
+    flexDirection: "row",
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BRAND_ORANGE,
+    marginHorizontal: 4,
   },
 });

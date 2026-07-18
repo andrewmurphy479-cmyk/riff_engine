@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Riff Engine",
+    "name": "Riffology",
     "slug": "riff-engine-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0B0B0F"
+      "backgroundColor": "#0d0805"
     },
     "ios": {
       "supportsTablet": true,

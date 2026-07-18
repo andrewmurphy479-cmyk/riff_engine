@@ -56,7 +56,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Riff Engine',
+          title: 'Riffology',
           tabBarLabel: 'Create',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="musical-notes" size={size} color={color} />

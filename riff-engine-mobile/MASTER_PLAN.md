@@ -108,9 +108,9 @@ One scale (minor pentatonic + optional b5), and intermediate players get the sam
 - [x] Replace text glyphs (`▶`/`■`) in Library/Armory with Ionicons like everywhere else.
 
 ### B4. Branding & first impression
-- [x] **Pick the name.** "Riff Engine" everywhere — splash now says RIFF ENGINE on the theme background/accent (blue, `#0B0B0F`).
-- [x] Cut the cold-start animation for returning users. First-launch: full intro (gated on `!onboardingComplete`). Returning: ~600ms wordmark fade; the dead `setTimeout(2000)` is gone.
-- [x] Convert `RiffologyLoadingScreen.js` → TS (`components/LoadingScreen.tsx`); no .js source files remain.
+- [x] **Pick the name.** Decision (2026-07-18): the app is **RIFFOLOGY**. app.json name, Create-tab header, and settings footer all say Riffology; the orange RIFFOLOGY splash is the brand mark, and the native splash background matches its `#0d0805`.
+- [x] ~~Cut the cold-start animation for returning users.~~ Reverted by request — the full Riffology splash animation plays on every launch; it's part of the brand.
+- [x] Convert `RiffologyLoadingScreen.js` → TS (`components/RiffologyLoadingScreen.tsx`); no .js source files remain.
 
 ### B5. Settings screen (missing entirely)
 - [x] New route: `app/settings.tsx` (modal, gear in Today's header) — profile (level/genres, redo setup via `resetOnboarding()`), audio prefs (metronome/count-in switches), version, privacy-policy link (placeholder URL), "restore purchases" placeholder for Phase E.
