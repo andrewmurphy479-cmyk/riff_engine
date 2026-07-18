@@ -27,8 +27,6 @@ interface PooledSound {
   isPlaying: boolean;
   midiNote: number;
   stringIndex: number;
-  /** Playback volume the sound was started at (choke ramp scales from this). */
-  volume: number;
 }
 
 // Guitar string to pool index mapping
@@ -99,6 +97,7 @@ class SamplePlayerImpl {
     guitarString: GuitarString,
     fret: number,
     velocity: number = 0.7,
+    durationMs: number = 500,
     technique?: Technique,
     playbackVolume?: number
   ): Promise<void> {
@@ -115,28 +114,28 @@ class SamplePlayerImpl {
     this.stopString(stringIndex);
 
     // Generate and play synthesized tone
-    await this.playSynthNote(midiNote, stringIndex, velocity, technique, guitarString, playbackVolume);
+    await this.playSynthNote(midiNote, stringIndex, velocity, durationMs, technique, guitarString, playbackVolume);
   }
 
   private async playSynthNote(
     midiNote: number,
     stringIndex: number,
     volume: number,
+    durationMs: number,
     technique: Technique | undefined,
     guitarString: GuitarString,
     playbackVolume?: number
   ): Promise<void> {
     try {
       // volume controls tone generation (timbre); playbackVolume controls loudness
-      const toneUri = await this.getOrCreateTone(midiNote, volume, technique, guitarString);
+      const toneUri = await this.getOrCreateTone(midiNote, durationMs, volume, technique, guitarString);
       const effectiveVolume = playbackVolume ?? volume;
 
-      const startVolume = Math.min(1, effectiveVolume);
       const { sound } = await Audio.Sound.createAsync(
         { uri: toneUri },
         {
           shouldPlay: true,
-          volume: startVolume,
+          volume: Math.min(1, effectiveVolume),
           isLooping: false,
         }
       );
@@ -146,7 +145,6 @@ class SamplePlayerImpl {
         isPlaying: true,
         midiNote,
         stringIndex,
-        volume: startVolume,
       };
 
       sound.setOnPlaybackStatusUpdate((status) => {
@@ -162,15 +160,15 @@ class SamplePlayerImpl {
 
   private async getOrCreateTone(
     midiNote: number,
+    durationMs: number,
     velocity: number,
     technique: Technique | undefined,
     guitarString: GuitarString
   ): Promise<string> {
-    // Clips are ring-length (duration-independent), so duration is not part of
-    // the key — tempo changes reuse the same tones.
+    const cacheDuration = Math.round(durationMs / 100) * 100;
     const layer = velocityToLayer(velocity);
     const techKey = techniqueCacheKey(technique);
-    const cacheKey = `${midiNote}_${layer}_${techKey}`;
+    const cacheKey = `${midiNote}_${cacheDuration}_${layer}_${techKey}`;
 
     const cached = toneCache.get(cacheKey);
     if (cached) {
@@ -180,19 +178,20 @@ class SamplePlayerImpl {
       }
     }
 
-    const uri = await this.generateToneFile(midiNote, layer, technique, guitarString);
+    const uri = await this.generateToneFile(midiNote, cacheDuration, layer, technique, guitarString);
     toneCache.set(cacheKey, uri);
     return uri;
   }
 
   private async generateToneFile(
     midiNote: number,
+    durationMs: number,
     layer: VelocityLayer,
     technique: Technique | undefined,
     guitarString: GuitarString
   ): Promise<string> {
     const velocity = layerToVelocity(layer);
-    const { left, right } = synthesizeTone({ midiNote, velocity, technique, guitarString });
+    const { left, right } = synthesizeTone({ midiNote, durationMs, velocity, technique, guitarString });
 
     // Pad with silence so per-clip reverb has room to tail out.
     const padSamples = Math.floor((SAMPLE_RATE * REVERB_PAD_MS) / 1000);
@@ -218,7 +217,7 @@ class SamplePlayerImpl {
     const wavBuffer = createStereoWavBuffer(paddedL, paddedR);
 
     const techKey = techniqueCacheKey(technique);
-    const fileName = `tone_${midiNote}_${layer}_${techKey}.wav`;
+    const fileName = `tone_${midiNote}_${durationMs}_${layer}_${techKey}.wav`;
     const filePath = `${FileSystem.cacheDirectory}${fileName}`;
 
     const base64Data = arrayBufferToBase64(wavBuffer);
@@ -235,13 +234,14 @@ class SamplePlayerImpl {
   async preGenerateTones(
     notes: Array<{
       midiNote: number;
+      durationMs: number;
       velocity: number;
       technique?: Technique;
       guitarString: GuitarString;
     }>
   ): Promise<void> {
-    const promises = notes.map(({ midiNote, velocity, technique, guitarString }) =>
-      this.getOrCreateTone(midiNote, velocity, technique, guitarString)
+    const promises = notes.map(({ midiNote, durationMs, velocity, technique, guitarString }) =>
+      this.getOrCreateTone(midiNote, durationMs, velocity, technique, guitarString)
     );
     await Promise.all(promises);
   }
@@ -286,14 +286,8 @@ class SamplePlayerImpl {
     this.fadingSounds.add(sound);
     void (async () => {
       try {
-        // Stepped mini-ramp instead of an instant volume-0: with ring-length
-        // clips a choked note is still at real volume, and a hard cut clicks.
-        await sound.setVolumeAsync(pooled.volume * 0.45);
-        await new Promise(resolve => setTimeout(resolve, 10));
-        await sound.setVolumeAsync(pooled.volume * 0.15);
-        await new Promise(resolve => setTimeout(resolve, 10));
         await sound.setVolumeAsync(0);
-        await new Promise(resolve => setTimeout(resolve, 15));
+        await new Promise(resolve => setTimeout(resolve, 25));
         await sound.stopAsync();
         await sound.unloadAsync();
       } catch {

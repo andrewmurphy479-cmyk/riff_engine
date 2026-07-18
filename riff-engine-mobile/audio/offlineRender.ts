@@ -11,7 +11,6 @@ import {
   synthesizeTone,
   applyReverb,
   applyDynamics,
-  ringLengthMs,
   MuteParams,
   SAMPLE_RATE,
 } from './KarplusStrong';
@@ -19,7 +18,7 @@ import {
 export interface OfflineRenderOptions {
   /** Wet mix for the master reverb (export default 0.15). */
   reverbMix?: number;
-  /** Pad appended after the last note's ring end, in seconds (default 1.2 — reverb tail space). */
+  /** Silence appended after the last note, in seconds (default 1.2). */
   tailSeconds?: number;
   /** Palm-mute character overrides (tuning/audition). */
   muteParams?: Partial<MuteParams>;
@@ -33,16 +32,6 @@ export interface StereoMix {
 }
 
 const STEPS_PER_BEAT = 4;
-// Same-string choke: fade length ending exactly at the next same-string onset.
-const CHOKE_FADE_MS = 25;
-
-interface PlacedNote {
-  event: TabEvent;
-  startSample: number;
-  ringSamples: number;
-  /** Samples from this note's start to the next same-string onset (Infinity if none). */
-  chokeRel: number;
-}
 
 export function renderEventsToStereo(
   events: TabEvent[],
@@ -52,6 +41,13 @@ export function renderEventsToStereo(
   const { reverbMix = 0.15, tailSeconds = 1.2, muteParams, onProgress } = options;
 
   const secondsPerStep = 60 / bpm / STEPS_PER_BEAT;
+  const maxStep = Math.max(
+    ...events.map((e) => e.step + (e.swingOffset ?? 0) + e.duration),
+  );
+  const totalSamples = Math.ceil((maxStep * secondsPerStep + tailSeconds) * SAMPLE_RATE);
+
+  const mixL = new Float32Array(totalSamples);
+  const mixR = new Float32Array(totalSamples);
 
   // Grouped humanization: one jitter value per unique step so simultaneous
   // notes stay together; downbeats tighter than off-beats.
@@ -65,10 +61,8 @@ export function renderEventsToStereo(
     }
   }
 
-  // Pass 1: place every note (humanized start + natural ring length) so choke
-  // points and the exact buffer size are known before synthesis. Notes ring at
-  // full length until the SAME string is struck again — other strings ring over.
-  const placed: PlacedNote[] = events.map((event) => {
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
     const jitterMs = stepJitter.get(event.step) ?? 0;
     const jitterSamples = Math.round((jitterMs / 1000) * SAMPLE_RATE);
     const startSample = Math.max(
@@ -77,64 +71,25 @@ export function renderEventsToStereo(
         (event.step + (event.swingOffset ?? 0)) * secondsPerStep * SAMPLE_RATE,
       ) + jitterSamples,
     );
-    const ringMs = ringLengthMs(
-      event.string,
-      fretToMidiNote(event.string, event.fret),
-      event.technique ?? undefined,
-      muteParams,
-    );
-    const ringSamples = Math.floor((ringMs / 1000) * SAMPLE_RATE);
-    return { event, startSample, ringSamples, chokeRel: Infinity };
-  });
-
-  for (const p of placed) {
-    for (const q of placed) {
-      if (
-        q.event.string === p.event.string &&
-        q.startSample > p.startSample &&
-        q.startSample - p.startSample < p.chokeRel
-      ) {
-        p.chokeRel = q.startSample - p.startSample;
-      }
-    }
-  }
-
-  let lastRingEnd = 0;
-  for (const p of placed) {
-    lastRingEnd = Math.max(lastRingEnd, p.startSample + Math.min(p.ringSamples, p.chokeRel));
-  }
-  const totalSamples = lastRingEnd + Math.ceil(tailSeconds * SAMPLE_RATE);
-
-  const mixL = new Float32Array(totalSamples);
-  const mixR = new Float32Array(totalSamples);
-
-  const chokeFadeSamples = Math.floor((CHOKE_FADE_MS / 1000) * SAMPLE_RATE);
-
-  for (let i = 0; i < placed.length; i++) {
-    const { event, startSample, chokeRel } = placed[i];
+    const durationMs = event.duration * secondsPerStep * 1000;
 
     const { left, right } = synthesizeTone({
       midiNote: fretToMidiNote(event.string, event.fret),
+      durationMs,
       velocity: event.velocity ?? 0.7,
       technique: event.technique ?? undefined,
       guitarString: event.string,
       muteParams,
     });
 
-    const fadeStart = chokeRel - chokeFadeSamples;
     for (let j = 0; j < left.length; j++) {
-      if (j >= chokeRel) break;
       const idx = startSample + j;
       if (idx >= totalSamples) break;
-      let gain = 1;
-      if (j >= fadeStart) {
-        gain = Math.cos(((j - fadeStart) / chokeFadeSamples) * Math.PI * 0.5);
-      }
-      mixL[idx] += left[j] * gain;
-      mixR[idx] += right[j] * gain;
+      mixL[idx] += left[j];
+      mixR[idx] += right[j];
     }
 
-    onProgress?.((i + 1) / placed.length);
+    onProgress?.((i + 1) / events.length);
   }
 
   applyReverb(mixL, mixR, reverbMix);

@@ -122,8 +122,7 @@ export default function HomeScreen() {
   );
 
   // Live tempo: a tempo change mid-playback restarts what was playing at the
-  // new BPM (no count-in — the user is already mid-practice). Ring-length
-  // tone caching is duration-independent, so the restart is near-instant.
+  // new BPM (no count-in — the user is already mid-practice).
   const handleTempoChange = useCallback(
     (bpm: number | null) => {
       setTempoOverride(bpm);

@@ -32,6 +32,7 @@ const ALL_CHORDS = [
 
 const PROGRESSION_CHORD_GAP_MS = 1100;
 const PROGRESSION_STRUM_GAP_MS = 30;
+const PROGRESSION_NOTE_DURATION_MS = 1000;
 
 export function ChordArmoryReference() {
   const [progression, setProgression] = useState<string[]>([]);
@@ -61,6 +62,7 @@ export function ChordArmoryReference() {
     const tones = ALL_CHORDS.flatMap((chordId) =>
       getChordShape(chordId).map((note) => ({
         midiNote: fretToMidiNote(note.string, note.fret),
+        durationMs: PROGRESSION_NOTE_DURATION_MS,
         velocity: 0.6,
         guitarString: note.string,
       })),
@@ -74,7 +76,12 @@ export function ChordArmoryReference() {
     const shape = getChordShape(chordId);
     shape.forEach(({ string: guitarString, fret }, i) => {
       setTimeout(() => {
-        SamplePlayer.playNote(guitarString, fret, 0.6);
+        SamplePlayer.playNote(
+          guitarString,
+          fret,
+          0.6,
+          PROGRESSION_NOTE_DURATION_MS,
+        );
       }, i * PROGRESSION_STRUM_GAP_MS);
     });
   }, []);
@@ -91,7 +98,12 @@ export function ChordArmoryReference() {
       const shape = getChordShape(chordId);
       shape.forEach(({ string: guitarString, fret }, stringIdx) => {
         const t = setTimeout(() => {
-          SamplePlayer.playNote(guitarString, fret, 0.6);
+          SamplePlayer.playNote(
+            guitarString,
+            fret,
+            0.6,
+            PROGRESSION_NOTE_DURATION_MS,
+          );
         }, chordIdx * PROGRESSION_CHORD_GAP_MS + stringIdx * PROGRESSION_STRUM_GAP_MS);
         playTimeoutsRef.current.push(t);
       });
