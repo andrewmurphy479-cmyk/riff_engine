@@ -1,13 +1,54 @@
+// Riff playback engine on react-native-audio-api (Web Audio).
+//
+// Notes are scheduled as AudioBufferSourceNodes on the audio clock — no
+// setTimeout-fired note onsets, no per-note WAV files, no bridge-latency
+// volume stepping. Tones come from ToneBank at natural ring length and are
+// choked with sample-accurate gain ramps when their string is struck again.
+// JS timers remain only for control flow (playhead callbacks, loop re-entry,
+// end-of-playback), where a few ms of drift is invisible.
+
 import { useEffect, useCallback, useMemo, useRef } from 'react';
-import { Audio } from 'expo-av';
+import type { AudioBufferSourceNode, GainNode } from 'react-native-audio-api';
 import { TabEvent, GuitarString, Technique } from '../engine/types';
-import { SamplePlayer } from './SamplePlayer';
-import { SampleLoader } from './SampleLoader';
-import { Metronome } from './Metronome';
+import { PlaybackGraph } from './playbackGraph';
+import {
+  ToneBank,
+  ToneSpec,
+  ACCENT_TICK_VOLUME,
+  SUB_TICK_VOLUME,
+} from './toneBank';
 import { fretToMidiNote } from './noteMapping';
 
-interface ScheduledNote {
-  timeoutId: ReturnType<typeof setTimeout>;
+const STRING_TO_INDEX: Record<GuitarString, number> = {
+  E: 0,
+  A: 1,
+  D: 2,
+  G: 3,
+  B: 4,
+  e: 5,
+};
+
+// Same-string choke: fade the old note out over 25ms starting at the new
+// note's onset (a fretting hand damping the string).
+const CHOKE_FADE_S = 0.025;
+// Lead time between scheduling and the first sound — enough to enqueue every
+// source; short enough that the play button still feels instant.
+const START_LATENCY_S = 0.08;
+// Schedule the next loop iteration this far before the current one ends. The
+// downbeat itself stays sample-accurate (anchored to the audio clock); this
+// only controls when the JS scheduling work happens.
+const LOOP_LOOKAHEAD_MS = 250;
+const STRUM_INTERVAL_S = 0.012;
+const STEPS_PER_BEAT = 4;
+
+interface Voice {
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+  /** Gain value the note was scheduled with, for choke-ramp anchoring. */
+  volume: number;
+  /** -1 for metronome ticks (no choke tracking). */
+  stringIndex: number;
+  endTime: number;
 }
 
 interface AudioEngineConfig {
@@ -25,42 +66,52 @@ export interface PlayOptions {
 
 interface LoopContext {
   events: TabEvent[];
-  msPerStep: number;
-  totalDurationMs: number;
+  secPerStep: number;
+  totalDurationS: number;
   metronome: boolean;
   /** Count-in length for the FIRST iteration only; consumed by scheduleIteration. */
-  pendingCountInMs: number;
+  pendingCountInS: number;
+}
+
+function eventToneSpec(event: TabEvent): ToneSpec {
+  return {
+    midiNote: fretToMidiNote(event.string, event.fret),
+    velocity: event.velocity ?? 0.7,
+    guitarString: event.string,
+    technique: event.technique ?? undefined,
+  };
 }
 
 class AudioEngineImpl {
-  private scheduledNotes: ScheduledNote[] = [];
+  private timers: ReturnType<typeof setTimeout>[] = [];
+  private activeVoices = new Set<Voice>();
+  private lastVoiceOnString: (Voice | null)[] = new Array(6).fill(null);
   private isPlaying = false;
   private isLooping = false;
   private loopContext: LoopContext | null = null;
-  private isInitialized = false;
-  private endTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private config: AudioEngineConfig = {};
+  /** Bumped by every play()/stop(); stale async work checks it and bails. */
+  private playToken = 0;
+  private isInitialized = false;
+  private initPromise: Promise<void> | null = null;
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
 
-    try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-      });
-
-      await SampleLoader.initialize();
-      await SamplePlayer.initialize();
-      await Metronome.initialize();
-
-      this.isInitialized = true;
-      console.log('AudioEngine initialized');
-    } catch (error) {
-      console.error('Failed to initialize audio engine:', error);
-      this.isInitialized = true;
-    }
+    this.initPromise = (async () => {
+      try {
+        await PlaybackGraph.initialize();
+        ToneBank.init(PlaybackGraph.context);
+        this.isInitialized = true;
+      } catch (error) {
+        // Stay uninitialized so the next play() retries, and rethrow so a
+        // failure can never masquerade as working audio.
+        this.initPromise = null;
+        throw error;
+      }
+    })();
+    return this.initPromise;
   }
 
   setConfig(config: AudioEngineConfig): void {
@@ -73,206 +124,363 @@ class AudioEngineImpl {
     loop: boolean = false,
     options: PlayOptions = {}
   ): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
     this.stop();
+    const token = ++this.playToken;
 
     if (events.length === 0) return;
+
+    try {
+      await this.initialize();
+    } catch (error) {
+      console.error('AudioEngine: init failed, cannot play:', error);
+      return;
+    }
+    if (token !== this.playToken) return;
 
     this.isPlaying = true;
     this.isLooping = loop;
     this.config.onPlaybackStart?.();
 
-    const stepsPerBeat = 4;
-    const msPerStep = (60 / bpm / stepsPerBeat) * 1000;
-    const maxStep = Math.max(...events.map(e => e.step + (e.swingOffset ?? 0) + e.duration));
-    const totalDurationMs = maxStep * msPerStep;
-    const msPerBeat = msPerStep * stepsPerBeat;
-    const pendingCountInMs = options.countIn ? 4 * msPerBeat : 0;
+    const secPerStep = 60 / bpm / STEPS_PER_BEAT;
+    const maxStep = Math.max(
+      ...events.map((e) => e.step + (e.swingOffset ?? 0) + e.duration)
+    );
+    const totalDurationS = maxStep * secPerStep;
+    const secPerBeat = secPerStep * STEPS_PER_BEAT;
 
-    // Pre-generate all tones ONCE — tones are cached across loop iterations
-    const noteSpecs = events.map(event => ({
-      midiNote: fretToMidiNote(event.string, event.fret),
-      durationMs: event.duration * msPerStep,
-      velocity: event.velocity ?? 0.7,
-      technique: event.technique ?? undefined,
-      guitarString: event.string,
-    }));
-    await SamplePlayer.preGenerateTones(noteSpecs);
-
-    // If stopped while pre-generating, bail out
-    if (!this.isPlaying) return;
+    // Synthesize any missing tone buffers first (cached across riffs, loops,
+    // and tempo changes — the cache key has no duration in it).
+    await ToneBank.ensure(
+      PlaybackGraph.context,
+      events.map(eventToneSpec),
+      () => token !== this.playToken
+    );
+    if (token !== this.playToken || !this.isPlaying) return;
 
     this.loopContext = {
       events,
-      msPerStep,
-      totalDurationMs,
+      secPerStep,
+      totalDurationS,
       metronome: options.metronome ?? false,
-      pendingCountInMs,
+      pendingCountInS: options.countIn ? 4 * secPerBeat : 0,
     };
-    this.scheduleIteration();
+    this.scheduleIteration(
+      PlaybackGraph.context.currentTime + START_LATENCY_S,
+      token
+    );
   }
 
-  private scheduleIteration(): void {
-    if (!this.loopContext || !this.isPlaying) return;
-    const { events, msPerStep, totalDurationMs, metronome } = this.loopContext;
+  private scheduleIteration(iterStart: number, token: number): void {
+    if (!this.loopContext || !this.isPlaying || token !== this.playToken) {
+      return;
+    }
+    const ctx = PlaybackGraph.context;
+    const { events, secPerStep, totalDurationS, metronome } = this.loopContext;
 
     // Count-in applies to the first iteration only; loops re-enter at the downbeat.
-    const countInMs = this.loopContext.pendingCountInMs;
-    this.loopContext.pendingCountInMs = 0;
+    const countInS = this.loopContext.pendingCountInS;
+    this.loopContext.pendingCountInS = 0;
 
-    const msPerBeat = msPerStep * 4;
-    if (countInMs > 0) {
+    const secPerBeat = secPerStep * STEPS_PER_BEAT;
+    const notesStart = iterStart + countInS;
+
+    if (countInS > 0) {
       for (let b = 0; b < 4; b++) {
-        const timeoutId = setTimeout(() => Metronome.playTick(b === 0), b * msPerBeat);
-        this.scheduledNotes.push({ timeoutId });
+        this.startTick(iterStart + b * secPerBeat, b === 0);
       }
     }
 
     if (metronome) {
-      const totalBeats = Math.max(1, Math.round(totalDurationMs / msPerBeat));
+      const totalBeats = Math.max(1, Math.round(totalDurationS / secPerBeat));
       for (let b = 0; b < totalBeats; b++) {
-        const timeoutId = setTimeout(
-          () => Metronome.playTick(b % 4 === 0),
-          countInMs + b * msPerBeat,
-        );
-        this.scheduledNotes.push({ timeoutId });
+        this.startTick(notesStart + b * secPerBeat, b % 4 === 0);
       }
     }
 
-    // Fresh grouped jitter per iteration so loops don't sound mechanical
+    // Fresh grouped jitter per iteration so loops don't sound mechanical.
     const stepJitter = new Map<number, number>();
     for (const event of events) {
       if (!stepJitter.has(event.step)) {
-        const stepInBar = event.step % 16;
-        const isDownbeat = stepInBar % 4 === 0;
-        const jitterRange = isDownbeat ? 3 : 8;
+        const isDownbeat = (event.step % 16) % 4 === 0;
+        const jitterRange = isDownbeat ? 0.003 : 0.008;
         stepJitter.set(event.step, (Math.random() - 0.5) * 2 * jitterRange);
       }
     }
 
-    // Schedule step callbacks (one per unique step, at the same humanized time)
+    // Playhead callbacks ride JS timers aimed at the audio-clock times.
     if (this.config.onStepPlay) {
       const scheduledSteps = new Set<number>();
       for (const event of events) {
         if (scheduledSteps.has(event.step)) continue;
         scheduledSteps.add(event.step);
-        const delayMs = countInMs + (event.step + (event.swingOffset ?? 0)) * msPerStep;
-        const jitterMs = stepJitter.get(event.step) ?? 0;
-        const humanizedDelay = Math.max(0, delayMs + jitterMs);
         const step = event.step;
-        const timeoutId = setTimeout(() => {
-          this.config.onStepPlay?.(step);
-        }, humanizedDelay);
-        this.scheduledNotes.push({ timeoutId });
+        const t =
+          notesStart +
+          (event.step + (event.swingOffset ?? 0)) * secPerStep +
+          (stepJitter.get(event.step) ?? 0);
+        this.addTimerAt(t, () => {
+          if (token === this.playToken) this.config.onStepPlay?.(step);
+        });
       }
     }
 
-    // Count simultaneous notes per step for polyphony mixing
+    // Count simultaneous notes per step for polyphony mixing.
     const stepNoteCounts = new Map<number, number>();
     for (const event of events) {
       stepNoteCounts.set(event.step, (stepNoteCounts.get(event.step) ?? 0) + 1);
     }
 
-    // Track strum ordering within each step for micro-stagger
+    // Chokes are scheduled ahead of time, so notes MUST be processed in
+    // chronological order per string — lastVoiceOnString tracks the
+    // temporally-previous note. Stable sort keeps within-step strum order.
+    const ordered = [...events].sort(
+      (a, b) =>
+        a.step + (a.swingOffset ?? 0) - (b.step + (b.swingOffset ?? 0))
+    );
     const stepStrumIndex = new Map<number, number>();
-    const STRUM_INTERVAL_MS = 12;
 
-    // Schedule each note with grouped jitter + polyphony mixing
-    for (const event of events) {
-      const delayMs = countInMs + (event.step + (event.swingOffset ?? 0)) * msPerStep;
-      const noteDurationMs = event.duration * msPerStep;
-      const jitterMs = stepJitter.get(event.step) ?? 0;
+    for (const event of ordered) {
+      const buffer = ToneBank.get(eventToneSpec(event));
+      if (!buffer) continue;
 
       const velocity = event.velocity ?? 0.7;
-      const technique = event.technique ?? undefined;
-
       const count = stepNoteCounts.get(event.step) ?? 1;
       const polyScale = count > 1 ? 1 / Math.sqrt(count) : 1;
-      const playbackVolume = velocity * polyScale;
 
       const strumIdx = stepStrumIndex.get(event.step) ?? 0;
       stepStrumIndex.set(event.step, strumIdx + 1);
-      const strumDelay = count > 1 ? strumIdx * STRUM_INTERVAL_MS : 0;
+      const strumDelay = count > 1 ? strumIdx * STRUM_INTERVAL_S : 0;
 
-      const humanizedDelay = Math.max(0, delayMs + jitterMs + strumDelay);
-
-      const timeoutId = setTimeout(() => {
-        this.playNote(event.string, event.fret, noteDurationMs, velocity, technique, playbackVolume);
-      }, humanizedDelay);
-
-      this.scheduledNotes.push({ timeoutId });
+      const t = Math.max(
+        ctx.currentTime + 0.005,
+        notesStart +
+          (event.step + (event.swingOffset ?? 0)) * secPerStep +
+          (stepJitter.get(event.step) ?? 0) +
+          strumDelay
+      );
+      this.startVoice(
+        buffer,
+        STRING_TO_INDEX[event.string],
+        velocity * polyScale,
+        t
+      );
     }
 
-    // Loop mode: re-enter right at the downbeat of the next iteration (seamless).
-    // Non-loop: add 200ms tail so final notes can decay before cleanup.
-    const endDelay = countInMs + (this.isLooping ? totalDurationMs : totalDurationMs + 200);
-    this.endTimeoutId = setTimeout(() => {
-      this.handlePlaybackEnd();
-    }, endDelay);
+    // Loop is re-checked at the seam (not latched at schedule time) so
+    // toggling it mid-iteration behaves like the old engine. Looping
+    // iterations are scheduled early on a JS timer, but the downbeat itself
+    // is `iterEnd` on the audio clock, so the seam is sample-accurate
+    // regardless of timer slop.
+    const iterEnd = notesStart + totalDurationS;
+    const fireInMs = Math.max(
+      0,
+      (iterEnd - ctx.currentTime) * 1000 - LOOP_LOOKAHEAD_MS
+    );
+    this.timers.push(
+      setTimeout(() => {
+        if (token !== this.playToken || !this.isPlaying) return;
+        if (this.isLooping && this.loopContext) {
+          this.scheduleIteration(iterEnd, token);
+        } else {
+          // Not looping (or toggled off): finish at the musical end. The
+          // final notes keep ringing out through the bus — the old engine's
+          // hard stopAll here was the chop. A loop toggled on inside the
+          // last LOOP_LOOKAHEAD_MS still re-enters, just without lookahead.
+          this.addTimerAt(iterEnd, () => {
+            if (token !== this.playToken) return;
+            if (this.isLooping && this.loopContext) {
+              this.scheduleIteration(iterEnd, token);
+            } else {
+              this.finishPlayback();
+            }
+          });
+        }
+      }, fireInMs)
+    );
   }
 
-  private async playNote(
-    string: GuitarString,
-    fret: number,
-    durationMs: number,
-    velocity: number = 0.7,
-    technique?: Technique,
-    playbackVolume?: number
-  ): Promise<void> {
-    if (!this.isPlaying) return;
+  /** Schedule `cb` at an audio-clock time via setTimeout (control flow only). */
+  private addTimerAt(audioTime: number, cb: () => void): void {
+    const delayMs = Math.max(
+      0,
+      (audioTime - PlaybackGraph.context.currentTime) * 1000
+    );
+    this.timers.push(setTimeout(cb, delayMs));
+  }
 
+  private startTick(t: number, accent: boolean): void {
+    const buffer = ToneBank.getTick(accent);
+    if (!buffer) return;
+    const ctx = PlaybackGraph.context;
+    const gain = ctx.createGain();
+    gain.gain.value = accent ? ACCENT_TICK_VOLUME : SUB_TICK_VOLUME;
+    PlaybackGraph.connectDry(gain);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gain);
+
+    const voice: Voice = {
+      source,
+      gain,
+      volume: gain.gain.value,
+      stringIndex: -1,
+      endTime: t + buffer.duration,
+    };
+    source.onEnded = () => this.activeVoices.delete(voice);
+    source.start(t);
+    this.activeVoices.add(voice);
+  }
+
+  private startVoice(
+    buffer: NonNullable<ReturnType<typeof ToneBank.get>>,
+    stringIndex: number,
+    volume: number,
+    t: number
+  ): Voice {
+    const ctx = PlaybackGraph.context;
+    const clampedVolume = Math.min(1, volume);
+
+    const gain = ctx.createGain();
+    gain.gain.value = clampedVolume;
+    PlaybackGraph.connectNote(gain);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gain);
+
+    // A new note on a string chokes whatever is still ringing there.
+    this.chokeString(stringIndex, t);
+
+    const voice: Voice = {
+      source,
+      gain,
+      volume: clampedVolume,
+      stringIndex,
+      endTime: t + buffer.duration,
+    };
+    source.onEnded = () => {
+      this.activeVoices.delete(voice);
+      if (
+        stringIndex >= 0 &&
+        this.lastVoiceOnString[stringIndex] === voice
+      ) {
+        this.lastVoiceOnString[stringIndex] = null;
+      }
+    };
+    source.start(t);
+    this.activeVoices.add(voice);
+    if (stringIndex >= 0) {
+      this.lastVoiceOnString[stringIndex] = voice;
+    }
+    return voice;
+  }
+
+  /** Sample-accurate 25ms fade on the previous note of a string, at time t. */
+  private chokeString(stringIndex: number, t: number): void {
+    if (stringIndex < 0) return;
+    const prev = this.lastVoiceOnString[stringIndex];
+    if (!prev || prev.endTime <= t) return;
     try {
-      await SamplePlayer.playNote(string, fret, velocity, durationMs, technique, playbackVolume);
-    } catch (error) {
-      console.error('Error playing note:', error);
+      prev.gain.gain.setValueAtTime(prev.volume, t);
+      prev.gain.gain.linearRampToValueAtTime(0, t + CHOKE_FADE_S);
+      prev.source.stop(t + CHOKE_FADE_S + 0.005);
+      prev.endTime = t + CHOKE_FADE_S + 0.005;
+    } catch {
+      // The source may already have ended naturally.
     }
   }
 
-  private handlePlaybackEnd(): void {
-    // Loop mode: re-enter scheduleIteration without cleaning up. Ringing tails
-    // from the previous iteration are allowed to bleed into the next downbeat.
-    if (this.isLooping && this.isPlaying && this.loopContext) {
-      this.scheduledNotes = [];
-      this.endTimeoutId = null;
-      this.scheduleIteration();
-      return;
-    }
-
+  private finishPlayback(): void {
     this.isPlaying = false;
     this.isLooping = false;
     this.loopContext = null;
-    this.scheduledNotes = [];
-    this.endTimeoutId = null;
-    SamplePlayer.stopAll();
+    this.clearTimers();
     this.config.onStepPlay?.(-1);
     this.config.onPlaybackEnd?.();
   }
 
   stop(): void {
-    // Reset loop intent first so any in-flight end timeout won't re-enter
+    this.playToken++;
+    const wasPlaying = this.isPlaying;
+    this.isPlaying = false;
     this.isLooping = false;
     this.loopContext = null;
-
-    for (const note of this.scheduledNotes) {
-      clearTimeout(note.timeoutId);
-    }
-    this.scheduledNotes = [];
-
-    if (this.endTimeoutId) {
-      clearTimeout(this.endTimeoutId);
-      this.endTimeoutId = null;
-    }
-
-    SamplePlayer.stopAll();
-
-    if (this.isPlaying) {
-      this.isPlaying = false;
+    this.clearTimers();
+    this.stopAllNotes();
+    if (wasPlaying) {
       this.config.onStepPlay?.(-1);
       this.config.onPlaybackEnd?.();
     }
+  }
+
+  /**
+   * Fade every sounding (and cancel every pending) voice. Also the stop path
+   * for direct note playback (Chord Armory).
+   */
+  stopAllNotes(): void {
+    if (!this.isInitialized) return;
+    const now = PlaybackGraph.context.currentTime;
+    for (const voice of this.activeVoices) {
+      try {
+        voice.gain.gain.cancelScheduledValues(now);
+        voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
+        voice.gain.gain.linearRampToValueAtTime(0, now + 0.06);
+        // Also cancels sources scheduled to start in the future.
+        voice.source.stop(now + 0.08);
+      } catch {
+        // Already ended.
+      }
+    }
+    this.activeVoices.clear();
+    this.lastVoiceOnString.fill(null);
+  }
+
+  /**
+   * Immediate one-off note (Chord Armory previews/progressions). durationMs is
+   * accepted for compatibility but the note rings naturally until its string
+   * is struck again or stopAllNotes() is called.
+   */
+  async playNote(
+    guitarString: GuitarString,
+    fret: number,
+    velocity: number = 0.7,
+    _durationMs?: number,
+    technique?: Technique,
+    playbackVolume?: number
+  ): Promise<void> {
+    try {
+      await this.initialize();
+    } catch (error) {
+      console.error('AudioEngine: init failed, cannot play note:', error);
+      return;
+    }
+    const spec: ToneSpec = {
+      midiNote: fretToMidiNote(guitarString, fret),
+      velocity,
+      guitarString,
+      technique,
+    };
+    await ToneBank.ensure(PlaybackGraph.context, [spec]);
+    const buffer = ToneBank.get(spec);
+    if (!buffer) return;
+    this.startVoice(
+      buffer,
+      STRING_TO_INDEX[guitarString],
+      playbackVolume ?? velocity,
+      PlaybackGraph.context.currentTime + 0.005
+    );
+  }
+
+  /** Pre-synthesize tone buffers so a later playNote()/play() is instant. */
+  async prepareTones(specs: ToneSpec[]): Promise<void> {
+    try {
+      await this.initialize();
+    } catch (error) {
+      console.error('AudioEngine: init failed, cannot prepare tones:', error);
+      return;
+    }
+    await ToneBank.ensure(PlaybackGraph.context, specs);
   }
 
   setLoop(loop: boolean): void {
@@ -283,8 +491,11 @@ class AudioEngineImpl {
     return this.isPlaying;
   }
 
-  isSynthesisMode(): boolean {
-    return SampleLoader.isSynthesisMode();
+  private clearTimers(): void {
+    for (const id of this.timers) {
+      clearTimeout(id);
+    }
+    this.timers = [];
   }
 }
 
@@ -314,7 +525,9 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
       onStepPlay: (step: number) => optionsRef.current.onStepPlay?.(step),
     });
 
-    AudioEngine.initialize().catch(console.error);
+    AudioEngine.initialize().catch((error) => {
+      console.error('AudioEngine: initialization failed:', error);
+    });
 
     return () => {
       AudioEngine.stop();

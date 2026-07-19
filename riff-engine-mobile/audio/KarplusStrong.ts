@@ -1,5 +1,5 @@
 // Shared Karplus-Strong synthesis module
-// Used by both SamplePlayer (real-time playback) and AudioExporter (offline render)
+// Used by both ToneBank (real-time playback buffers) and AudioExporter (offline render)
 
 import { Technique, GuitarString } from '../engine/types';
 
@@ -608,7 +608,7 @@ export function createStereoWavBuffer(left: Float32Array, right: Float32Array): 
 }
 
 /**
- * Convert mono Float32 PCM data to Int16 WAV buffer (kept for SamplePlayer cache files).
+ * Convert mono Float32 PCM data to Int16 WAV buffer (currently unused at runtime; kept for tooling).
  */
 export function createWavBuffer(floatData: Float32Array): ArrayBuffer {
   const numChannels = 1;

@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SamplePlayer } from "../audio/SamplePlayer";
+import { AudioEngine } from "../audio/AudioEngine";
 import { fretToMidiNote } from "../audio/noteMapping";
 import { CHORD_CARD_DATA } from "../engine/chordCardData";
 import { getChordShape } from "../engine/theory";
@@ -55,7 +55,7 @@ export function ChordArmoryReference() {
   const stopProgressionPlayback = useCallback(() => {
     clearPlayTimeouts();
     setIsPlayingProgression(false);
-    SamplePlayer.stopAll();
+    AudioEngine.stopAllNotes();
   }, [clearPlayTimeouts]);
 
   useEffect(() => {
@@ -67,7 +67,7 @@ export function ChordArmoryReference() {
         guitarString: note.string,
       })),
     );
-    SamplePlayer.preGenerateTones(tones);
+    AudioEngine.prepareTones(tones);
   }, []);
 
   useEffect(() => () => clearPlayTimeouts(), [clearPlayTimeouts]);
@@ -76,7 +76,7 @@ export function ChordArmoryReference() {
     const shape = getChordShape(chordId);
     shape.forEach(({ string: guitarString, fret }, i) => {
       setTimeout(() => {
-        SamplePlayer.playNote(
+        AudioEngine.playNote(
           guitarString,
           fret,
           0.6,
@@ -98,7 +98,7 @@ export function ChordArmoryReference() {
       const shape = getChordShape(chordId);
       shape.forEach(({ string: guitarString, fret }, stringIdx) => {
         const t = setTimeout(() => {
-          SamplePlayer.playNote(
+          AudioEngine.playNote(
             guitarString,
             fret,
             0.6,
