@@ -1,6 +1,18 @@
-# Riff Engine — Master Plan
+# Riffology — Master Plan
 
-*Written 2026-07-14, after a full codebase audit (engine, audio, UI/UX, ship-readiness).*
+*Written 2026-07-14, after a full codebase audit (engine, audio, UI/UX, ship-readiness). Revised 2026-07-18 after Sprints 1–4 — see "The pay-worthiness pivot" below.*
+
+---
+
+## Revision 2026-07-18 — the pay-worthiness pivot
+
+Sprints 1–4 delivered Phases A1–A4 and essentially all of Phase B. The original plan said Sprint 5 = ship infra → TestFlight. **That step is cancelled for now.** The owner's verdict: the app is not yet something people would pay for, and the gaps are, in priority order:
+
+1. **How it sounds (timbre/playback).** Real-time playback is "choppy but clean" — the ring-length fix was reverted (`c641f61`) because the JS-synthesis + one-WAV-per-note + expo-av architecture fundamentally can't do long rings, shared reverb, or sample-accurate chokes. More Karplus-Strong tuning is a dead end; the fix is a real audio engine + recorded samples. This is now **Phase F**, and it goes first.
+2. **Not enough product.** A generator + daily streak isn't a subscription by itself. Users need a content ladder — Chord Armory depth, curriculum-style paths. This is now **Phase G**.
+3. **Overall polish/feel.** The app should feel finished before anyone is asked to trust it with money. This is now **Phase H**.
+
+Explicitly **not** the gap: riff variety/musicality (A5–A7). Those stay parked until after the beta gate — and A6's bends/slides get dramatically cheaper on the Phase F audio architecture anyway (playbackRate automation).
 
 ---
 
@@ -65,6 +77,8 @@ Engine is strictly monophonic; **the audio engine already handles simultaneous n
 - [x] 27 templates, min 4 per feel *after* the beginner filter (property-tested).
 - [x] Per-template `swing` flag on `bouncy`/`laid_back` templates; ratio seeded per riff (0.57–0.62) into `RiffSpec.swing`, carried as per-event `swingOffset` in `toEvents` so app playback, bar loops, WAV export, and batch audits all swing identically (grid `step` stays straight for views/playhead).
 - [x] Syncopation-forward templates: rest-on-1 (`rest_on_one`, `offbeat_strut`), push (`redline_push`), full gallop for heavy at intermediate+ (`full_gallop`).
+
+> **Status 2026-07-18:** A1–A4 shipped (Sprints 1–2). A5–A7 below are **parked** — the owner's verdict is that riff variety is not the pay-worthiness gap. Revisit after the beta gate. Note: A6 (bends/slides) becomes much cheaper once Phase F's Web Audio path lands — pitch glides are playbackRate automation instead of new synthesis code.
 
 ### A5. Scale & key color
 One scale (minor pentatonic + optional b5), and intermediate players get the same 5 notes as beginners.
@@ -143,10 +157,10 @@ One scale (minor pentatonic + optional b5), and intermediate players get the sam
 - [ ] `eas.json` with dev/preview/production profiles; set `ios.buildNumber` / `android.versionCode` strategy.
 - [ ] Run `npx expo install --check` — expo-av `~14.0.7` looks stale against SDK 54.
 
-### D2. Migrate expo-av → expo-audio
-expo-av is deprecated and **removed in SDK 55** — this is a when-not-if migration. Touches `SamplePlayer` and `AudioEngine.setAudioModeAsync`. Do it before adding more playback features on the old API. While in there:
-- [ ] Fix `AudioEngine.initialize` swallowing failures (`catch` still sets `isInitialized = true` → silent no-op audio).
-- [ ] Persist the tone cache across launches (currently cleared every init; every session re-synthesizes everything).
+### D2. Migrate expo-av → expo-audio — **superseded by Phase F1**
+expo-av is deprecated and **removed in SDK 55**. The original plan was a like-for-like migration to expo-audio; Phase F1 instead replaces the whole playback layer with `react-native-audio-api`, after which expo-av should be *removed entirely* (its remaining uses — `SamplePlayer`, `setAudioModeAsync` — all have equivalents in the new stack). The two sub-items fold into F1:
+- [ ] Fix init swallowing failures (`catch` must not mark audio initialized → silent no-op audio).
+- [ ] Tone/sample cache that persists across launches (moot for buffers loaded from bundled sample assets, but keep it for any synthesized fallback).
 
 ### D3. Observability
 - [ ] Sentry (`sentry-expo`): crash reporting + an app-level ErrorBoundary (none exists).
@@ -173,20 +187,71 @@ expo-av is deprecated and **removed in SDK 55** — this is a when-not-if migrat
 
 ---
 
-## Recommended execution order
+## Phase F — Make it sound real (audio fidelity rewrite) *(added 2026-07-18)*
+
+*The ceiling on everything musical. The choppiness post-mortem (2026-07-17/18) proved the current architecture — JS-thread Karplus-Strong synthesis → one base64 WAV per note → expo-av clip players — cannot deliver: per-clip baked reverb stacks wet tails, bridge-latency volume ramps can't choke cleanly, and pre-generation cost scales with clip length (the reverted ring-length fix lagged the play button for seconds). Architecture first, timbre second, so failures are attributable.*
+
+### F1. Playback architecture: Web Audio via `react-native-audio-api`
+Software Mansion's [react-native-audio-api](https://docs.swmansion.com/react-native-audio-api/) — a Web Audio API implementation for React Native, active, with an [Expo config plugin](https://docs.swmansion.com/react-native-audio-api/docs/other/audio-api-plugin/). Requires an **Expo dev build** (not Expo Go) — which drags `eas.json` + the dev-build workflow (part of D1) forward as a side effect.
+- [ ] Add the plugin, set up EAS dev builds (iOS first), verify the audio session/silent-switch behavior `setAudioModeAsync` used to handle.
+- [ ] New playback core: tones decoded once into `AudioBuffer`s; notes scheduled as `AudioBufferSourceNode`s on the audio clock (no per-note WAV writes, no `setTimeout` scheduling).
+- [ ] **Shared** effects at the graph level — one reverb (ConvolverNode or equivalent) + one compressor on the master bus, not baked per clip. This is what makes long natural rings viable (the reverted `34661aa` idea, on an architecture that can do it).
+- [ ] Sample-accurate gain-envelope chokes on same-string re-onset; ring-length decays restored.
+- [ ] Re-wire metronome, count-in, live tempo, and the `onStepPlay` playhead to the audio clock (it's a better clock than the current one anyway).
+- [ ] Fix the old D2 items: init must not swallow failures into silent no-op audio.
+- [ ] Keep the KS *timbre* this sprint — same sound source, new scheduling/mixing. **Gate: on-device listen** (post-mortem lesson: offline RMS probes are not validation). Expected wins even before samples: no dead-air chop, clean chokes, instant play button.
+
+### F2. Real instrument samples
+- [ ] Source a multisampled electric guitar with a commercial-use-safe license (velocity layers; a palm-mute articulation set is near-mandatory — check FreePats, Karoryfer, VSCO/Versilian, etc.). License review before integration.
+- [ ] Sample pipeline (offline tool): trim/normalize/loop-check → app-bundled assets; mapping table midi+velocityLayer+technique → sample file + playbackRate (pitch-shift between sampled semitones).
+- [ ] Techniques on samples: `mute` → dedicated PM samples; hammer/pull → attack shaping/fast retrigger; (bends/slides later via playbackRate automation — unlocks A6 cheaply).
+- [ ] Metronome clicks stay synthesized; KS synth demoted to fallback.
+- [ ] AudioExporter/share + `npm run batch` render from the same samples so exports match in-app sound.
+- [ ] **Gate: the 30-second test, on device** — a generated riff sounds like a guitar, not a synth. This is the phase the whole strategic frame has been waiting on.
+
+---
+
+## Phase G — Make it worth paying for (product depth) *(added 2026-07-18)*
+
+*Owner verdict: generator + streak alone isn't a subscription. Scope this phase properly at sprint start — but ranked candidates, strongest evidence first:*
+
+- [ ] **Chord Armory expansion** — historically the owner's favorite feature alongside the tab visualizer. Custom chord adding, more voicings/qualities, richer theory info, and a chord→riff bridge ("generate a riff over this chord") that ties the Armory into the moat.
+- [ ] **Curriculum-lite paths** (Phase 4 of the product roadmap, pulled forward): multi-day structured arcs ("Palm-mute bootcamp," "Pentatonic positions week") that sequence generated riffs + Armory content with a narrative. This is the clearest "thing you subscribe to."
+- [ ] **Session narrative + overflow rewards** (from Phase C backlog): varied daily recipe (best feel / preferred / one "stretch" riff), bonus riffs after the goal, overflow counter. Cheap, makes the daily loop feel designed.
+- [ ] Stretch: riff→song seeds (chain riffs into a structure — Phase 5 teaser), backing drums under playback (only after F, and only if samples land well).
+
+---
+
+## Phase H — Make it feel finished (polish audit) *(added 2026-07-18)*
+
+- [ ] **Real app icon + splash assets** (pulled from D1 — it's the most visible polish item; currently a 1×1 placeholder PNG).
+- [ ] Finish B3's remainder: adopt `typography`/`spacing` tokens in the ~6 components still using raw values.
+- [ ] App-wide feel pass: screen transitions, loading/empty/error states everywhere (Library empty state, generation failure, audio init failure), copy/tone pass.
+- [ ] Performance targets: cold-start time, tap-play latency (<150ms feels instant — F1 should get us most of the way).
+- [ ] A fresh end-to-end walkthrough on device: onboarding → first riff → practice → share, fixing every rough edge found.
+
+---
+
+## Recommended execution order *(revised 2026-07-18)*
 
 ```
-Sprint 1  A0 unfreeze + A1 dynamics + A2 palm-mute chugs        ← DONE
-Sprint 2  A3 power chords + A4 templates/swing                   ← DONE (incl. the D4 practice-store migrate prereq)
-Sprint 3  B1 playhead/metronome/count-in + B2 share export       ← DONE
-Sprint 4  B3 design consolidation + B4 branding + B5 settings + B6 haptics  ← DONE
-Sprint 5  D1 blockers + D2 expo-audio + D3 Sentry/analytics + D4 tests/CI
-          → TestFlight beta gate: do guitarists like the sound?
-Sprint 6  C retention loop (notifications, streak insurance, recap)
-Sprint 7  A5–A7 second engine wave (scales, bends/slides, structures)
-Sprint 8  E monetization + store listing → launch
+Sprint 1  A0 unfreeze + A1 dynamics + A2 palm-mute chugs                    ← DONE
+Sprint 2  A3 power chords + A4 templates/swing (+ D4 store-migrate prereq)  ← DONE
+Sprint 3  B1 playhead/metronome/count-in + B2 share export                  ← DONE
+Sprint 4  B3 design + B4 branding + B5 settings + B6 haptics                ← DONE
+Sprint 5  F1 audio architecture (react-native-audio-api, dev build, shared FX, ring decays)
+Sprint 6  F2 real samples → on-device sound gate: "sounds like a guitar"
+Sprint 7  G product depth wave 1 (scope at sprint start; leading: Armory expansion + curriculum-lite)
+Sprint 8  H polish audit + real icon/splash
+Sprint 9  D remainder (D1 minus icon, D3 Sentry/analytics, D4 tests/CI)
+          → TestFlight beta gate: would guitarists pay for this?
+Sprint 10 C retention loop (notifications, streak insurance, recap)
+Sprint 11 E monetization + store listing → launch
+          (A5–A7 second engine wave: post-beta, informed by feedback)
 ```
 
-Two hard sequencing rules:
-1. **`usePracticeStore` migration hygiene (D4) must land before A3** changes the event/spec shape.
-2. **Beta gate after Sprint 5** — validate the sound with real guitarists before investing in monetization.
+Hard sequencing rules:
+1. ~~`usePracticeStore` migration hygiene before A3~~ — done (Sprint 2).
+2. **Every audio change is judged by an on-device listen** — never by offline probes alone (lesson of the `34661aa` revert).
+3. **F1 before F2** — swap the architecture with the timbre held constant, then swap the timbre. Never both at once.
+4. **Beta gate after Sprint 9, before retention/monetization** — and the gate question has changed from "do they like the sound?" to "would they pay?"
