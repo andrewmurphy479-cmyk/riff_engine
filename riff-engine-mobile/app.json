@@ -20,7 +20,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -28,7 +29,8 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0B0B0F"
       },
-      "package": "com.riffengine.mobile"
+      "package": "com.riffengine.mobile",
+      "permissions": []
     },
     "web": {
       "bundler": "metro",
@@ -43,12 +45,20 @@
         {
           "iosBackgroundMode": false,
           "androidPermissions": [],
-          "androidForegroundService": false
+          "androidForegroundService": false,
+          "disableFFmpeg": true,
+          "disableStaticExternalLibs": true
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "46b60852-cc4d-46c8-a3a7-2917bd6803b2"
+      }
     }
   }
 }
