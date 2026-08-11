@@ -73,6 +73,26 @@ function makeImpulseResponse(ctx: AudioContext) {
   return buffer;
 }
 
+// Audit A3: the context is *requested* at SAMPLE_RATE, but the platform is
+// free to ignore that and hand back the hardware rate (most iOS hardware runs
+// 48k). If it does, every AudioBuffer built at SAMPLE_RATE gets resampled on
+// playback — the exact cost the fixed-rate context was meant to avoid — and it
+// also decides what rate the F2 sample library should be authored at. One
+// startup line so the answer shows up in the Metro console on the next launch.
+function logSampleRate(ctx: AudioContext): void {
+  let preferred: number | string;
+  try {
+    preferred = AudioManager.getDevicePreferredSampleRate();
+  } catch (error) {
+    preferred = `unavailable (${String(error)})`;
+  }
+  const honored = ctx.sampleRate === SAMPLE_RATE;
+  console.log(
+    `[audio] sampleRate: requested ${SAMPLE_RATE}, context reports ${ctx.sampleRate}, ` +
+      `device prefers ${preferred} — ${honored ? 'HONORED (no resampling)' : 'IGNORED: buffers are being resampled per playback'}`,
+  );
+}
+
 class PlaybackGraphImpl {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -127,6 +147,8 @@ class PlaybackGraphImpl {
     if (ctx.state === 'suspended') {
       await ctx.resume();
     }
+
+    logSampleRate(ctx);
 
     this.ctx = ctx;
     this.master = master;
