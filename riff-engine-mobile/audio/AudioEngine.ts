@@ -8,8 +8,14 @@
 // end-of-playback), where a few ms of drift is invisible.
 
 import { useEffect, useCallback, useMemo, useRef } from 'react';
-import type { AudioBufferSourceNode, GainNode } from 'react-native-audio-api';
+import type {
+  AudioBufferSourceNode,
+  GainNode,
+  StereoPannerNode,
+} from 'react-native-audio-api';
 import { TabEvent, GuitarString, Technique } from '../engine/types';
+import { stringPan } from './KarplusStrong';
+import { STEPS_PER_BAR, totalStepsFor } from './loopLength';
 import { PlaybackGraph } from './playbackGraph';
 import {
   ToneBank,
@@ -40,10 +46,14 @@ const START_LATENCY_S = 0.08;
 const LOOP_LOOKAHEAD_MS = 250;
 const STRUM_INTERVAL_S = 0.012;
 const STEPS_PER_BEAT = 4;
+// How long a riff must sit on screen before its tones are warmed (audit A8).
+const PREPARE_DELAY_MS = 350;
 
 interface Voice {
   source: AudioBufferSourceNode;
   gain: GainNode;
+  /** Per-string constant-power pan; ToneBank buffers are mono. */
+  panner: StereoPannerNode;
   /** Gain value the note was scheduled with, for choke-ramp anchoring. */
   volume: number;
   /** -1 for metronome ticks (no choke tracking). */
@@ -62,15 +72,39 @@ export interface PlayOptions {
   countIn?: boolean;
   /** Click on every beat during playback, accented on bar downbeats. */
   metronome?: boolean;
+  /**
+   * The riff's bar count, which is what a loop iteration is actually worth.
+   * Pass `riff.bars.length` when the caller has the spec. Omitted, it is
+   * derived from the events, which is correct unless the riff's FINAL bar is
+   * entirely empty — derivation cannot see a bar that contains no notes.
+   */
+  bars?: number;
 }
 
 interface LoopContext {
   events: TabEvent[];
   secPerStep: number;
+  totalSteps: number;
   totalDurationS: number;
   metronome: boolean;
   /** Count-in length for the FIRST iteration only; consumed by scheduleIteration. */
   pendingCountInS: number;
+}
+
+/**
+ * Unhook a finished voice from the bus. Every note builds its own
+ * source -> gain -> panner chain, and a long practice loop starts thousands of
+ * them; leaving finished chains attached to master leaves it to the native
+ * layer to decide when they die.
+ */
+function releaseVoiceNodes(voice: Voice): void {
+  try {
+    voice.source.disconnect();
+    voice.gain.disconnect();
+    voice.panner.disconnect();
+  } catch {
+    // Already torn down.
+  }
 }
 
 function eventToneSpec(event: TabEvent): ToneSpec {
@@ -101,6 +135,9 @@ class AudioEngineImpl {
 
     this.initPromise = (async () => {
       try {
+        // Registered before initialize() so the listeners it installs already
+        // have somewhere to report to (audit A1/A2).
+        PlaybackGraph.setSessionLostHandler(() => this.stop());
         await PlaybackGraph.initialize();
         ToneBank.init(PlaybackGraph.context);
         this.isInitialized = true;
@@ -142,10 +179,13 @@ class AudioEngineImpl {
     this.config.onPlaybackStart?.();
 
     const secPerStep = 60 / bpm / STEPS_PER_BEAT;
-    const maxStep = Math.max(
-      ...events.map((e) => e.step + (e.swingOffset ?? 0) + e.duration)
-    );
-    const totalDurationS = maxStep * secPerStep;
+    // A loop iteration is worth whole bars, NOT "wherever the last note ended".
+    // The old max(step + swingOffset + duration) made 36% of generated riffs
+    // loop early — by a mean of 2 steps, up to a full beat — whenever the final
+    // bar ended in a rest, and made swung riffs overhang the seam by the last
+    // note's swing offset (audit A5, see F1_AUDIO_AUDIT_MEASUREMENTS.md).
+    const totalSteps = totalStepsFor(events, options.bars);
+    const totalDurationS = totalSteps * secPerStep;
     const secPerBeat = secPerStep * STEPS_PER_BEAT;
 
     // Synthesize any missing tone buffers first (cached across riffs, loops,
@@ -160,6 +200,7 @@ class AudioEngineImpl {
     this.loopContext = {
       events,
       secPerStep,
+      totalSteps,
       totalDurationS,
       metronome: options.metronome ?? false,
       pendingCountInS: options.countIn ? 4 * secPerBeat : 0,
@@ -175,7 +216,8 @@ class AudioEngineImpl {
       return;
     }
     const ctx = PlaybackGraph.context;
-    const { events, secPerStep, totalDurationS, metronome } = this.loopContext;
+    const { events, secPerStep, totalSteps, totalDurationS, metronome } =
+      this.loopContext;
 
     // Count-in applies to the first iteration only; loops re-enter at the downbeat.
     const countInS = this.loopContext.pendingCountInS;
@@ -191,7 +233,9 @@ class AudioEngineImpl {
     }
 
     if (metronome) {
-      const totalBeats = Math.max(1, Math.round(totalDurationS / secPerBeat));
+      // Exact, not round(totalDurationS / secPerBeat): the old rounding dropped
+      // a click on ~1% of riffs (audit A5).
+      const totalBeats = totalSteps / STEPS_PER_BEAT;
       for (let b = 0; b < totalBeats; b++) {
         this.startTick(notesStart + b * secPerBeat, b % 4 === 0);
       }
@@ -262,7 +306,8 @@ class AudioEngineImpl {
         buffer,
         STRING_TO_INDEX[event.string],
         velocity * polyScale,
-        t
+        t,
+        stringPan(event.string)
       );
     }
 
@@ -312,9 +357,16 @@ class AudioEngineImpl {
     const buffer = ToneBank.getTick(accent);
     if (!buffer) return;
     const ctx = PlaybackGraph.context;
+
+    // Ticks are mono too; centre them explicitly rather than relying on the
+    // bus to up-mix a mono input.
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = 0;
+    PlaybackGraph.connectDry(panner);
+
     const gain = ctx.createGain();
     gain.gain.value = accent ? ACCENT_TICK_VOLUME : SUB_TICK_VOLUME;
-    PlaybackGraph.connectDry(gain);
+    gain.connect(panner);
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
@@ -323,11 +375,15 @@ class AudioEngineImpl {
     const voice: Voice = {
       source,
       gain,
+      panner,
       volume: gain.gain.value,
       stringIndex: -1,
       endTime: t + buffer.duration,
     };
-    source.onEnded = () => this.activeVoices.delete(voice);
+    source.onEnded = () => {
+      this.activeVoices.delete(voice);
+      releaseVoiceNodes(voice);
+    };
     source.start(t);
     this.activeVoices.add(voice);
   }
@@ -336,14 +392,22 @@ class AudioEngineImpl {
     buffer: NonNullable<ReturnType<typeof ToneBank.get>>,
     stringIndex: number,
     volume: number,
-    t: number
+    t: number,
+    pan: number
   ): Voice {
     const ctx = PlaybackGraph.context;
     const clampedVolume = Math.min(1, volume);
 
+    // Buffers are mono (half the cache memory); the pan the synth used to bake
+    // in is applied here instead. StereoPannerNode uses the same
+    // constant-power law, so the output is unchanged.
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+    PlaybackGraph.connectNote(panner);
+
     const gain = ctx.createGain();
     gain.gain.value = clampedVolume;
-    PlaybackGraph.connectNote(gain);
+    gain.connect(panner);
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
@@ -355,12 +419,14 @@ class AudioEngineImpl {
     const voice: Voice = {
       source,
       gain,
+      panner,
       volume: clampedVolume,
       stringIndex,
       endTime: t + buffer.duration,
     };
     source.onEnded = () => {
       this.activeVoices.delete(voice);
+      releaseVoiceNodes(voice);
       if (
         stringIndex >= 0 &&
         this.lastVoiceOnString[stringIndex] === voice
@@ -468,7 +534,8 @@ class AudioEngineImpl {
       buffer,
       STRING_TO_INDEX[guitarString],
       playbackVolume ?? velocity,
-      PlaybackGraph.context.currentTime + 0.005
+      PlaybackGraph.context.currentTime + 0.005,
+      stringPan(guitarString)
     );
   }
 
@@ -480,7 +547,24 @@ class AudioEngineImpl {
       console.error('AudioEngine: init failed, cannot prepare tones:', error);
       return;
     }
-    await ToneBank.ensure(PlaybackGraph.context, specs);
+    // Abandon the warm-up if playback starts meanwhile — play() does its own
+    // ensure(), and racing it would only delay the sound.
+    const token = this.playToken;
+    await ToneBank.ensure(
+      PlaybackGraph.context,
+      specs,
+      () => token !== this.playToken
+    );
+  }
+
+  /**
+   * Warm the cache for a riff that is on screen but not yet playing, so the
+   * play tap doesn't pay for synthesis. Cold riffs measured ~840ms of synth
+   * (audit A8) — all of it on the tap, because nothing called this.
+   */
+  async prepareRiff(events: TabEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    await this.prepareTones(events.map(eventToneSpec));
   }
 
   setLoop(loop: boolean): void {
@@ -512,6 +596,8 @@ export interface AudioEngineRef {
   stop: () => void;
   setLoop: (loop: boolean) => void;
   initialize: () => Promise<void>;
+  /** Warm the tone cache for an on-screen riff; safe to call on every change. */
+  prepare: (events: TabEvent[]) => void;
 }
 
 export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngineRef {
@@ -550,11 +636,31 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
     await AudioEngine.initialize();
   }, []);
 
+  // Fire-and-forget: warming is best-effort and must never block a render or
+  // reject into an effect. Deferred and debounced so synthesis doesn't compete
+  // with the render/transition that just put the riff on screen, and so riffs
+  // the user is scrolling straight past are never synthesized at all.
+  const prepareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (prepareTimerRef.current) clearTimeout(prepareTimerRef.current);
+    };
+  }, []);
+  const prepare = useCallback((events: TabEvent[]) => {
+    if (prepareTimerRef.current) clearTimeout(prepareTimerRef.current);
+    prepareTimerRef.current = setTimeout(() => {
+      prepareTimerRef.current = null;
+      AudioEngine.prepareRiff(events).catch((error) => {
+        console.error('AudioEngine: prepare failed:', error);
+      });
+    }, PREPARE_DELAY_MS);
+  }, []);
+
   // Stable object identity: screens put this in effect deps (Today's focus
   // effect stops audio in its cleanup) — a fresh object every render would
   // re-fire those effects per render and kill playback as soon as it starts.
   return useMemo(
-    () => ({ play, stop, setLoop, initialize }),
-    [play, stop, setLoop, initialize],
+    () => ({ play, stop, setLoop, initialize, prepare }),
+    [play, stop, setLoop, initialize, prepare],
   );
 }

@@ -161,6 +161,13 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
     return () => AudioEngine.stop();
   }, []);
 
+  // The sheet only mounts for an opened riff, so warming here costs nothing
+  // for the rest of the library (audit A8).
+  useEffect(() => {
+    const events = riffSpecToEvents(riff);
+    audioEngine.prepare(showEmbellishments ? events : stripTechniques(events));
+  }, [riff, showEmbellishments, audioEngine]);
+
   const handlePlayToggle = useCallback(() => {
     hapticTap();
     if (isPlaying) {
@@ -171,6 +178,8 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
     audioEngine.play(
       showEmbellishments ? events : stripTechniques(events),
       riff.tempo_bpm,
+      false,
+      { bars: riff.bars.length },
     );
   }, [riff, isPlaying, audioEngine, showEmbellishments]);
 

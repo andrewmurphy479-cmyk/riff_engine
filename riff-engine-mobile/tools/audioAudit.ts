@@ -18,7 +18,8 @@ import { Feel, Level } from "../engine/riff/rhythm";
 import { RiffSpec } from "../engine/riff/spec";
 import { riffSpecToEvents } from "../engine/riff/toEvents";
 import { TabEvent } from "../engine/types";
-import { SAMPLE_RATE, synthesizeTone } from "../audio/KarplusStrong";
+import { SAMPLE_RATE, synthesizeMono, synthesizeTone } from "../audio/KarplusStrong";
+import { totalStepsFor as totalStepsFixed } from "../audio/loopLength";
 import { ToneBank, ToneSpec, velocityToLayer } from "../audio/toneBank";
 import { fretToMidiNote } from "../audio/noteMapping";
 
@@ -36,7 +37,10 @@ const EXPECTED_STEPS = STEPS_PER_BAR * BARS_PER_RIFF; // 64
 const RING_MS: Record<string, number> = { E: 3500, A: 3500, D: 2800, G: 2800, B: 2200, e: 2200 };
 const MUTE_RING_MS = 700;
 const BYTES_PER_SAMPLE = 4; // float32
-const CHANNELS = 2;
+// ToneBank caches MONO and pans at playback (A4 fix). The pre-fix cache was
+// stereo — CHANNELS_BEFORE is kept so the report still shows what was saved.
+const CHANNELS = 1;
+const CHANNELS_BEFORE = 2;
 
 interface Args {
   riffs: number;
@@ -84,6 +88,11 @@ function ringMsFor(spec: ToneSpec): number {
 
 function bytesFor(spec: ToneSpec): number {
   return Math.floor((SAMPLE_RATE * ringMsFor(spec)) / 1000) * CHANNELS * BYTES_PER_SAMPLE;
+}
+
+/** Loop length the engine used before the A5 fix. */
+function totalStepsBefore(events: TabEvent[]): number {
+  return Math.max(...events.map((e) => e.step + (e.swingOffset ?? 0) + e.duration));
 }
 
 function mb(bytes: number): string {
@@ -147,9 +156,7 @@ function measureA5(corpus: Sample[]): void {
   let worst: { sample: Sample; maxStep: number } | null = null;
 
   for (const s of corpus) {
-    const maxStep = Math.max(
-      ...s.events.map((e) => e.step + (e.swingOffset ?? 0) + e.duration),
-    );
+    const maxStep = totalStepsBefore(s.events);
     const bucket = byFeel.get(s.feel) ?? { n: 0, early: 0, sumShort: 0 };
     bucket.n++;
 
@@ -217,9 +224,7 @@ function measureA5(corpus: Sample[]): void {
   let wrongBeats = 0;
   const beatErrors = new Map<number, number>();
   for (const s of corpus) {
-    const maxStep = Math.max(
-      ...s.events.map((e) => e.step + (e.swingOffset ?? 0) + e.duration),
-    );
+    const maxStep = totalStepsBefore(s.events);
     const beats = Math.max(1, Math.round(maxStep / STEPS_PER_BEAT));
     if (beats !== 16) {
       wrongBeats++;
@@ -236,6 +241,41 @@ function measureA5(corpus: Sample[]): void {
       .join(", ");
     console.log(`    distribution: ${dist}`);
   }
+
+  // --- AFTER the fix ---
+  let derivedOk = 0;
+  let explicitOk = 0;
+  let derivedWrong: Sample[] = [];
+  for (const s of corpus) {
+    // Screens now pass riff.bars.length; the derivation is the fallback for
+    // callers that only have events (e.g. a re-based single-bar loop).
+    if (totalStepsFixed(s.events, s.riff.bars.length) === EXPECTED_STEPS) explicitOk++;
+    if (totalStepsFixed(s.events) === EXPECTED_STEPS) derivedOk++;
+    else derivedWrong.push(s);
+  }
+  console.log("\n  AFTER FIX (AudioEngine.totalStepsFor):");
+  console.log(
+    `    with explicit bars (what the screens pass): ${explicitOk}/${corpus.length} correct (${pct(explicitOk, corpus.length)})`,
+  );
+  console.log(
+    `    derived from events (fallback path):        ${derivedOk}/${corpus.length} correct (${pct(derivedOk, corpus.length)})`,
+  );
+  if (derivedWrong.length) {
+    console.log(
+      `    derivation misses ${derivedWrong.length} riff(s) — their final bar has no note onsets, which events alone cannot reveal. Explicit bars covers them.`,
+    );
+  }
+  // Single-bar loops (Explore/Create bar tiles) re-base steps to 0-15.
+  const barLoopOk = corpus.every((s) => {
+    const bar = s.events.filter((e) => e.step >= 48).map((e) => ({ ...e, step: e.step - 48 }));
+    return bar.length === 0 || totalStepsFixed(bar, 1) === STEPS_PER_BAR;
+  });
+  console.log(
+    `    single-bar loop length: ${barLoopOk ? "16 steps on every riff — correct" : "WRONG"}`,
+  );
+  console.log(
+    `    metronome beats: totalSteps / 4 is exact by construction — no rounding left to be wrong.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +300,9 @@ function measureA4(corpus: Sample[]): void {
       `(${actual === predicted ? "MATCH" : "MISMATCH — RING_MS in this script has drifted from toneBank.ts"})`,
   );
   console.log(
-    `  ${(predicted / 1024 / 1024).toFixed(2)} MB per low-string buffer (3.5s stereo float32 @ ${SAMPLE_RATE}Hz); mute buffers ${(bytesFor({ ...probe, technique: "mute" }) / 1024 / 1024).toFixed(2)} MB\n`,
+    `  ${(predicted / 1024 / 1024).toFixed(2)} MB per low-string buffer (3.5s MONO float32 @ ${SAMPLE_RATE}Hz), ` +
+      `was ${((predicted * CHANNELS_BEFORE) / CHANNELS / 1024 / 1024).toFixed(2)} MB stereo before the A4 fix; ` +
+      `mute buffers ${(bytesFor({ ...probe, technique: "mute" }) / 1024 / 1024).toFixed(2)} MB\n`,
   );
 
   const cache = new Map<string, number>(); // key -> bytes
@@ -268,7 +310,7 @@ function measureA4(corpus: Sample[]): void {
   const perRiffNew: number[] = [];
 
   console.log("Cumulative cache after N riffs played (cold start, never evicted):");
-  console.log("   riffs   entries      MB     new entries/riff");
+  console.log("   riffs   entries      MB   (was, stereo)   new entries/riff");
   corpus.forEach((s, i) => {
     let before = cache.size;
     for (const e of s.events) {
@@ -282,14 +324,15 @@ function measureA4(corpus: Sample[]): void {
       const bytes = [...cache.values()].reduce((a, b) => a + b, 0);
       const recentNew = perRiffNew.slice(-10).reduce((a, b) => a + b, 0) / Math.min(10, n);
       console.log(
-        `  ${String(n).padStart(6)}  ${String(cache.size).padStart(8)}  ${mb(bytes).padStart(6)}  ${recentNew.toFixed(1).padStart(10)} (last 10)`,
+        `  ${String(n).padStart(6)}  ${String(cache.size).padStart(8)}  ${mb(bytes).padStart(6)}   ${("(" + mb((bytes * CHANNELS_BEFORE) / CHANNELS) + ")").padStart(11)}   ${recentNew.toFixed(1).padStart(10)} (last 10)`,
       );
     }
   });
 
   const totalBytes = [...cache.values()].reduce((a, b) => a + b, 0);
   console.log(
-    `\n  ${corpus.length} riffs across ${FEELS.length} feels x ${LEVELS.length} levels x ${KEYS.length} keys -> ${cache.size} distinct buffers = ${mb(totalBytes)} MB resident.`,
+    `\n  ${corpus.length} riffs across ${FEELS.length} feels x ${LEVELS.length} levels x ${KEYS.length} keys -> ${cache.size} distinct buffers = ${mb(totalBytes)} MB resident ` +
+      `(was ${mb((totalBytes * CHANNELS_BEFORE) / CHANNELS)} MB before the mono fix).`,
   );
 
   // Single-riff and single-session cost.
@@ -406,7 +449,7 @@ function measureA8(corpus: Sample[], synthSamples: number): void {
     const start = process.hrtime.bigint();
     for (const spec of specs.values()) {
       const t0 = process.hrtime.bigint();
-      synthesizeTone({
+      synthesizeMono({
         midiNote: spec.midiNote,
         durationMs: ringMsFor(spec),
         velocity: [0.1, 0.3, 0.5, 0.7, 0.9][["pp", "p", "mf", "f", "ff"].indexOf(velocityToLayer(spec.velocity))],
@@ -450,7 +493,9 @@ function measureA8(corpus: Sample[], synthSamples: number): void {
       `vs the H-phase <150ms target. Warm replay is ~0ms (cache hit, no yields).`,
   );
   console.log(
-    `  prepareTones() would move all of this off the play tap — it is currently called ONLY from components/ChordArmoryReference.tsx.`,
+    `  A8 FIX: this cost is now paid on riff DISPLAY, not on the play tap — Today, Create,\n` +
+      `  Explore and the Library detail sheet all call audio.prepare() when the riff changes,\n` +
+      `  and the warm-up cancels itself if the user taps play mid-way.`,
   );
 }
 

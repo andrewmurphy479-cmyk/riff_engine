@@ -44,7 +44,11 @@ export default function ExploreScreen() {
   const followingBarChange = useRef(false);
   const lastFollowBar = useRef(-1);
 
-  const { play: playAudio, stop: stopAudio } = useAudioEngine({
+  const {
+    play: playAudio,
+    stop: stopAudio,
+    prepare: prepareAudio,
+  } = useAudioEngine({
     onPlaybackStart: () => setIsPlaying(true),
     onPlaybackEnd: () => {
       setIsPlaying(false);
@@ -81,6 +85,13 @@ export default function ExploreScreen() {
   useEffect(() => {
     stopAudio();
   }, [currentRiff?.seed, stopAudio]);
+
+  // Warm the tone cache for the riff on screen (audit A8).
+  useEffect(() => {
+    if (!currentRiff) return;
+    const events = riffSpecToEvents(currentRiff);
+    prepareAudio(showEmbellishments ? events : stripTechniques(events));
+  }, [currentRiff, showEmbellishments, prepareAudio]);
 
   // Stop playback when the user manually picks a different bar — but not when
   // riff playback is the one advancing the bar.
@@ -141,7 +152,9 @@ export default function ExploreScreen() {
     setPlayMode("riff");
     playModeRef.current = "riff";
     lastFollowBar.current = -1;
-    playAudio(riffEvents, effectiveBpm, false);
+    playAudio(riffEvents, effectiveBpm, false, {
+      bars: currentRiff.bars.length,
+    });
   }, [isPlaying, playMode, stopAudio, playAudio, currentRiff, effectiveBpm, showEmbellishments]);
 
   // Bar tile: loop just the selected bar for close study.
@@ -159,7 +172,7 @@ export default function ExploreScreen() {
     if (barEvents.length === 0) return;
     setPlayMode("bar");
     playModeRef.current = "bar";
-    playAudio(barEvents, effectiveBpm, true);
+    playAudio(barEvents, effectiveBpm, true, { bars: 1 });
   }, [isPlaying, playMode, stopAudio, playAudio, currentRiff, clampedIndex, effectiveBpm, showEmbellishments]);
 
   return (

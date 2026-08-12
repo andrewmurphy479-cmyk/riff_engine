@@ -10,6 +10,23 @@ These cover the audit findings that need no device: **A4, A5, A6, A8**.
 A1/A2/A7 are device-only. **A3** now self-reports — `playbackGraph.ts` logs
 `[audio] sampleRate: …` at init, visible in the Metro console on next launch.
 
+## Status after the fix pass (branch `f1-audio-audit-fixes`)
+
+| # | Finding | Status |
+|---|---|---|
+| A1 | Audio-session interruptions | **Fixed** — `PlaybackGraph.observeSession` stops on `interruption: began`, revives on `ended` |
+| A2 | Background → foreground | **Fixed** — `AppState` listener stops on background, revives the context on active |
+| A3 | Context sample rate | **Self-reporting** — reads out in Metro at startup; still needs one launch to answer |
+| A4 | Cache memory | **Halved** — mono buffers + `StereoPannerNode`. 327 MB → 163.5 MB at 400 riffs |
+| A5 | Loop length | **Fixed** — whole-bar iterations; 100% correct across the corpus, locked by `audio/loopLength.test.ts` |
+| A6 | Timer array | **Won't fix** — measured under 50 KB, not worth the churn |
+| A7 | Bluetooth latency | **Open** — needs device measurement; the library exposes no `outputLatency` |
+| A8 | Cold first-play | **Moved off the tap** — screens warm the cache on riff display |
+| A9 | Export/live divergence | **Open** — already on the F2 list |
+
+Numbers below are the *measured* before/after. Everything except A3 is JS-only;
+no rebuild needed.
+
 ---
 
 ## A5 — Loop length is wrong on half of all riffs · **confirmed, worse than estimated**
@@ -40,27 +57,40 @@ rather than a rush.
 **Metronome inherits it:** `Math.round(totalDurationS / secPerBeat)` yields
 **15 beats instead of 16 on 1.0%** of riffs — one missing click per loop.
 
-Only half the catalogue loops in time. Fix is arithmetic: derive
-`totalDurationS` from `bars.length × 16 × secPerStep` and hard-code the
-metronome to 16 beats. Ring tails carry across the seam already, so nothing
-else changes.
+Only half the catalogue loops in time.
+
+**Fixed** in `audio/loopLength.ts` (`totalStepsFor`). A loop iteration is now a
+whole number of bars: callers holding a `RiffSpec` pass `bars`, and the
+fallback derives the count from note *onsets* so a note ringing past the
+barline doesn't buy an extra empty bar. Metronome clicks are now
+`totalSteps / 4` — exact, no rounding. Re-measured over the same 400 riffs:
+
+| Path | Correct |
+|---|---|
+| Explicit `bars` (what every screen passes) | **400/400** |
+| Derived from events (fallback) | **400/400** |
+| Single-bar loop (Explore/Create bar tiles) | 16 steps on every riff |
+
+The one case derivation still cannot see is a final bar with *no notes at all* —
+nothing in an event list marks it — which is why the screens pass `bars`.
 
 ---
 
 ## A4 — Cache growth · **confirmed; the per-buffer estimate was exact, the ceiling is bounded**
 
-Byte model verified against a real `synthesizeTone()` call: **1,234,800 B =
-1.18 MB** per low/mid-string buffer (3.5 s × 44.1 kHz × 2 ch × float32); palm
-mutes are 0.24 MB. A single riff needs only ~9 distinct buffers (~10.6 MB) cold.
+Byte model verified against a real synth call: **1,234,800 B = 1.18 MB** per
+low/mid-string buffer (3.5 s × 44.1 kHz × 2 ch × float32); palm mutes 0.24 MB.
 
-| Riffs played | Entries | Resident |
-|---|---|---|
-| 1 | 9 | 7.3 MB |
-| 10 | 57 | 51.2 MB |
-| 25 | 102 | 93.7 MB |
-| 50 | 149 | 137.2 MB |
-| 100 | 223 | 205.7 MB |
-| 400 | 356 | **327.0 MB** |
+**Fixed by storing mono** (see "Cheaper levers" below): 0.59 MB and 0.12 MB.
+
+| Riffs played | Entries | Resident (now) | Was (stereo) |
+|---|---|---|---|
+| 1 | 9 | 3.6 MB | 7.3 MB |
+| 10 | 57 | 25.6 MB | 51.2 MB |
+| 25 | 102 | 46.9 MB | 93.7 MB |
+| 50 | 149 | 68.6 MB | 137.2 MB |
+| 100 | 223 | 102.9 MB | 205.7 MB |
+| 400 | 356 | **163.5 MB** | 327.0 MB |
 
 Correction to the audit's wording: the cache is *never evicted*, but it is not
 truly unbounded — the generator only emits MIDI 40–64, so the space saturates.
@@ -88,18 +118,22 @@ still play warm.
 
 ### Cheaper levers, in order
 
-1. **Store mono, pan at playback.** `synthesizeTone` computes a mono signal and
-   writes `left[i] = mono[i] * gains.left` / `right[i] = mono[i] * gains.right`
-   with static constant-power gains (`KarplusStrong.ts` ~line 381). A
+1. **Store mono, pan at playback — DONE.** `synthesizeTone` computed a mono
+   signal then wrote `left[i] = mono[i] * gains.left` /
+   `right[i] = mono[i] * gains.right` with static constant-power gains. A
    `StereoPannerNode` fed a mono buffer applies the identical
-   `cos/sin((pan+1)/2 · π/2)` law, so this is **bit-identical output at exactly
-   half the memory** — 327 MB → 164 MB, zero tonal risk.
-2. **Drop 5 velocity layers to 3.** Roughly another 40% off, given the 2.62
-   layers/combo measured. Costs some dynamic nuance — worth a listen test.
+   `cos/sin((pan+1)/2 · π/2)` law, so this is **identical output at exactly half
+   the memory** — measured 327 MB → 163.5 MB, zero tonal risk. The synth is now
+   split into `synthesizeMono` (live path) and `synthesizeTone` (the stereo
+   wrapper the offline/export render still uses).
+2. **Drop 5 velocity layers to 3.** Not done. Roughly another 40% off, given
+   the 2.62 layers/combo measured. Costs some dynamic nuance — worth a listen
+   test, and worth deciding *with* the F2 sample budget rather than before it.
 3. Shorter ring on treble strings is already in place (2.2 s vs 3.5 s).
 
-(1) and (2) together land a 400-riff session near 100 MB with no added latency.
-Decide the budget before F2 layers real samples on the same cache.
+With (1) done, a 400-riff browsing session sits at 163.5 MB; adding (2) would
+land it near 100 MB. Decide the budget before F2 layers real samples on the
+same cache.
 
 ---
 
@@ -108,6 +142,8 @@ Decide the budget before F2 layers real samples on the same cache.
 Node timings, `synthesizeTone` only — **order-of-magnitude and relative cost
 only**. Hermes on an A-series device will differ and this is *not* the on-device
 number.
+
+Before the fixes (stereo synth):
 
 - Per tone: mean **95.6 ms**, p50 99.8, p90 141.1, max 187.6
 - Per riff (9 distinct tones): mean **836 ms**, p90 1240 ms, max 1522 ms
@@ -118,10 +154,22 @@ number.
 Estimated cold first-play delay: **~845 ms mean / ~1250 ms p90 in Node terms**,
 against the H-phase <150 ms target. Warm replay is effectively 0 ms.
 
-`prepareTones()` exists for exactly this and is called from **only**
-`components/ChordArmoryReference.tsx:70` — not on riff load in Today or Create.
-Calling it when a riff is displayed (rather than when play is tapped) moves the
-whole cost off the tap.
+After (mono synth — one fewer 617 KB allocation and one fewer 154 k-sample pass
+per tone, so much less GC pressure):
+
+- Per tone: mean **36.3 ms**, p90 47.1 — **2.6× faster**
+- Per riff: mean **318 ms**, p90 416 ms
+- Throughput: **77× realtime**
+
+Still over the 150 ms target, so the cost was also **moved off the play tap**:
+Today, Create, Explore and the Library detail sheet now call `audio.prepare()`
+when the riff on screen changes. The warm-up is debounced by 350 ms (riffs
+scrolled past are never synthesized) and cancels itself if the user taps play
+mid-way, since `play()` does its own `ensure()`.
+
+The trade this makes is worth watching on device: synthesis now happens while
+the user is *looking* at a riff rather than after they tap play, so if anything
+feels janky it will be riff generation/navigation, not the play button.
 
 Worth noting against history: the reverted ring-length attempt (`34661aa`) was
 rejected partly for "play lag." Longer buffers cost proportionally more synth
@@ -142,8 +190,7 @@ timer), cleared only on stop/finish.
 | 140 | 6.9 s | 262 | 5,701 |
 
 An array of integers — under 50 KB even at 140 bpm. The only real cost is
-`clearTimers()` walking the whole array on stop. Not worth fixing on its own;
-fold it in if that code is touched anyway.
+`clearTimers()` walking the whole array on stop. Left as-is.
 
 ---
 
@@ -153,3 +200,27 @@ fold it in if that code is touched anyway.
 `baseLatency`** (checked `lib/typescript/core/BaseAudioContext.d.ts` and
 `AudioContext.d.ts`). A7's Bluetooth playhead compensation would need a
 measured/hard-coded offset rather than a queryable one.
+
+Voice nodes were never disconnected after a note finished — pre-existing, but
+each voice now builds two nodes (gain + panner) instead of one, so finished
+chains are unhooked from the bus in `source.onEnded`.
+
+---
+
+## Device checks for the fixed build
+
+Session handling (A1/A2) is written blind — the behavior is well-defined but
+unverified on hardware:
+
+- phone call mid-playback → hang up → play still works
+- background mid-riff → return → play still works; Siri; another app's audio
+- lock/unlock mid-loop; silent switch (must still sound — `playback` category)
+- yank wired headphones / drop Bluetooth mid-playback → stops, doesn't blast
+  the phone speaker
+- **stereo image unchanged** (mono + panner): low strings left, high right
+- metronome clicks still centred and audible
+- loop a riff whose last bar ends in a rest → turnaround no longer rushed
+- 20+ loops with metronome → no drift; ~30 riffs across keys → Xcode memory
+- browsing/generating riffs feels smooth (the A8 warm-up runs there now)
+- first-tap vs replay latency; rapid play/stop spam; densest chug at max tempo
+- the `[audio] sampleRate:` line in Metro on first launch (A3)

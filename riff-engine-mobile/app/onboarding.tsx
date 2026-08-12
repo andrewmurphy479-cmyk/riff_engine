@@ -72,7 +72,9 @@ export default function OnboardingScreen() {
   const previewFeel = useCallback(
     (feel: Feel) => {
       audio.stop();
-      audio.play(riffSpecToEvents(abRiffs[feel]), abRiffs[feel].tempo_bpm);
+      audio.play(riffSpecToEvents(abRiffs[feel]), abRiffs[feel].tempo_bpm, false, {
+        bars: abRiffs[feel].bars.length,
+      });
     },
     [audio, abRiffs],
   );

@@ -5,10 +5,17 @@
 // behavior — so one buffer serves every grid duration and tempo. (The old
 // expo-av cache keyed on duration, which meant every tempo change
 // re-synthesized the entire riff.)
+//
+// Buffers are MONO; AudioEngine pans each voice with a StereoPannerNode. The
+// synth's per-string pan was only a static constant-power gain pair, so this
+// is identical output at half the memory — and memory is the constraint here:
+// a 3.5s stereo float32 ring buffer was 1.18 MB, and a browsing session that
+// touched 400 riffs measured 327 MB resident (audit A4, see
+// F1_AUDIO_AUDIT_MEASUREMENTS.md). Mono halves that.
 
 import type { AudioBuffer, AudioContext } from 'react-native-audio-api';
 import { GuitarString, Technique } from '../engine/types';
-import { SAMPLE_RATE, synthesizeTone } from './KarplusStrong';
+import { SAMPLE_RATE, synthesizeMono } from './KarplusStrong';
 
 export type VelocityLayer = 'pp' | 'p' | 'mf' | 'f' | 'ff';
 
@@ -129,7 +136,7 @@ class ToneBankImpl {
       const layer = velocityToLayer(spec.velocity);
       const ringMs =
         spec.technique === 'mute' ? MUTE_RING_MS : RING_MS[spec.guitarString];
-      const { left, right } = synthesizeTone({
+      const mono = synthesizeMono({
         midiNote: spec.midiNote,
         durationMs: ringMs,
         velocity: layerToVelocity(layer),
@@ -137,11 +144,8 @@ class ToneBankImpl {
         guitarString: spec.guitarString,
         sustainTailMs: 0,
       });
-      const buffer = ctx.createBuffer(2, left.length, SAMPLE_RATE);
-      // StereoSamples is typed Float32Array<ArrayBufferLike>; the arrays are
-      // always plain `new Float32Array(n)`, so the narrowing is safe.
-      buffer.copyToChannel(left as Float32Array<ArrayBuffer>, 0);
-      buffer.copyToChannel(right as Float32Array<ArrayBuffer>, 1);
+      const buffer = ctx.createBuffer(1, mono.length, SAMPLE_RATE);
+      buffer.copyToChannel(mono, 0);
       this.cache.set(k, buffer);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
@@ -151,9 +155,8 @@ class ToneBankImpl {
     ctx: AudioContext,
     mono: Float32Array<ArrayBuffer>,
   ): AudioBuffer {
-    const buffer = ctx.createBuffer(2, mono.length, SAMPLE_RATE);
+    const buffer = ctx.createBuffer(1, mono.length, SAMPLE_RATE);
     buffer.copyToChannel(mono, 0);
-    buffer.copyToChannel(mono, 1);
     return buffer;
   }
 }

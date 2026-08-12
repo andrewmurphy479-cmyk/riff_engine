@@ -12,6 +12,8 @@
 // ceiling, and gain automation is sample-accurate instead of bridge-latency
 // volume stepping.
 
+import { AppState, AppStateStatus } from 'react-native';
+import type { AudioNode } from 'react-native-audio-api';
 import {
   AudioContext,
   AudioManager,
@@ -99,9 +101,20 @@ class PlaybackGraphImpl {
   private limiter: WaveShaperNode | null = null;
   private convolver: ConvolverNode | null = null;
   private reverbSend: GainNode | null = null;
+  /** Set by AudioEngine — tears down playback when the session goes away. */
+  private onSessionLost: (() => void) | null = null;
 
   get isInitialized(): boolean {
     return this.ctx !== null;
+  }
+
+  /**
+   * Register the "playback can no longer continue" callback (AudioEngine.stop).
+   * Kept as a callback rather than importing AudioEngine here, which would be
+   * a cycle — AudioEngine already imports this module.
+   */
+  setSessionLostHandler(cb: () => void): void {
+    this.onSessionLost = cb;
   }
 
   get context(): AudioContext {
@@ -149,6 +162,7 @@ class PlaybackGraphImpl {
     }
 
     logSampleRate(ctx);
+    this.observeSession(ctx);
 
     this.ctx = ctx;
     this.master = master;
@@ -157,14 +171,68 @@ class PlaybackGraphImpl {
     this.reverbSend = reverbSend;
   }
 
-  /** Route a note's gain node into the bus: dry + shared reverb send. */
-  connectNote(node: GainNode): void {
+  /**
+   * Audit A1/A2. Nothing used to watch the audio session, so a phone call,
+   * Siri, an alarm, another app taking audio, or simply backgrounding the app
+   * left the context suspended with nothing to resume it — playback "randomly
+   * died" and the play button did nothing until a reload.
+   *
+   * Policy: any event that takes the session away STOPS playback (so the UI's
+   * play/pause and playhead match reality) and any return to the foreground
+   * revives the context so the next tap works. Playback is deliberately NOT
+   * auto-restarted — resuming a riff mid-bar after a phone call is worse than
+   * letting the user tap play.
+   */
+  private observeSession(ctx: AudioContext): void {
+    const revive = async (): Promise<void> => {
+      try {
+        await AudioManager.setAudioSessionActivity(true);
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+      } catch (error) {
+        console.error('[audio] failed to revive audio session:', error);
+      }
+    };
+
+    AudioManager.observeAudioInterruptions(true);
+
+    AudioManager.addSystemEventListener('interruption', ({ type }) => {
+      if (type === 'began') {
+        this.onSessionLost?.();
+      } else {
+        // `shouldResume` only says the system would ALLOW resuming; we still
+        // just revive the context and leave the transport to the user.
+        void revive();
+      }
+    });
+
+    // Headphones yanked / Bluetooth dropped: iOS convention is to stop, not to
+    // blast the riff out of the phone speaker.
+    AudioManager.addSystemEventListener('routeChange', ({ reason }) => {
+      if (reason === 'OldDeviceUnavailable') {
+        this.onSessionLost?.();
+      }
+    });
+
+    // iOS suspends us on background (iosBackgroundMode is false in app.json).
+    AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') {
+        void revive();
+      } else if (next === 'background') {
+        this.onSessionLost?.();
+      }
+    });
+  }
+
+  /** Route a note's output into the bus: dry + shared reverb send. */
+  connectNote(node: AudioNode): void {
     node.connect(this.master!);
     node.connect(this.reverbSend!);
   }
 
   /** Route a metronome tick dry only — clicks don't belong in the room. */
-  connectDry(node: GainNode): void {
+  connectDry(node: AudioNode): void {
     node.connect(this.master!);
   }
 }

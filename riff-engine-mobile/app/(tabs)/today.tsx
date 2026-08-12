@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
   SafeAreaView,
@@ -74,6 +74,14 @@ export default function TodayScreen() {
     }, [ensureTodaySession, audio, flushSeconds]),
   );
 
+  // Warm the whole session's riffs up front (audit A8) — it's only a handful,
+  // and ToneBank.ensure() dedupes and yields between clips so the list stays
+  // responsive. One flattened call, since prepare() debounces.
+  useEffect(() => {
+    if (!session) return;
+    audio.prepare(session.riffs.flatMap(riffSpecToEvents));
+  }, [session, audio]);
+
   const handlePlay = useCallback(
     (idx: number) => {
       if (!session) return;
@@ -86,6 +94,8 @@ export default function TodayScreen() {
       audio.play(
         riffSpecToEvents(session.riffs[idx]),
         session.riffs[idx].tempo_bpm,
+        false,
+        { bars: session.riffs[idx].bars.length },
       );
       setPlayingIdx(idx);
     },

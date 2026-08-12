@@ -57,7 +57,11 @@ export default function HomeScreen() {
   // full tab so the playhead lands in the right bar.
   const playheadOffsetRef = useRef(0);
   // What's currently sounding, so tempo changes can restart the same thing.
-  const lastPlayedRef = useRef<{ events: TabEvent[]; loop: boolean } | null>(null);
+  const lastPlayedRef = useRef<{
+    events: TabEvent[];
+    loop: boolean;
+    bars: number;
+  } | null>(null);
 
   const audioEngine = useAudioEngine({
     onPlaybackStart: () => setIsPlaying(true),
@@ -73,6 +77,15 @@ export default function HomeScreen() {
     if (!currentRiff) generateNewRiff();
   }, [currentRiff, generateNewRiff]);
 
+  // Warm the tone cache for whatever is on screen, so the play tap doesn't pay
+  // for synthesis (audit A8). Prepares exactly what would sound, since the
+  // embellishments toggle changes the buffers a note maps to.
+  useEffect(() => {
+    if (!currentRiff) return;
+    const events = riffSpecToEvents(currentRiff);
+    audioEngine.prepare(showEmbellishments ? events : stripTechniques(events));
+  }, [currentRiff, showEmbellishments, audioEngine]);
+
   const handlePlayToggle = useCallback(() => {
     if (!currentRiff) return;
     if (isPlaying) {
@@ -82,10 +95,12 @@ export default function HomeScreen() {
     const events = riffSpecToEvents(currentRiff);
     const playEvents = showEmbellishments ? events : stripTechniques(events);
     playheadOffsetRef.current = 0;
-    lastPlayedRef.current = { events: playEvents, loop: isLooping };
+    const bars = currentRiff.bars.length;
+    lastPlayedRef.current = { events: playEvents, loop: isLooping, bars };
     audioEngine.play(playEvents, effectiveBpm, isLooping, {
       countIn: countInEnabled,
       metronome: metronomeEnabled,
+      bars,
     });
   }, [currentRiff, isPlaying, audioEngine, effectiveBpm, isLooping, showEmbellishments, countInEnabled, metronomeEnabled]);
 
@@ -114,10 +129,11 @@ export default function HomeScreen() {
       if (barEvents.length === 0) return;
       setIsLooping(true);
       playheadOffsetRef.current = startStep;
-      lastPlayedRef.current = { events: barEvents, loop: true };
+      lastPlayedRef.current = { events: barEvents, loop: true, bars: 1 };
       audioEngine.play(barEvents, effectiveBpm, true, {
         countIn: countInEnabled,
         metronome: metronomeEnabled,
+        bars: 1,
       });
     },
     [currentRiff, effectiveBpm, audioEngine, setIsLooping, showEmbellishments, countInEnabled, metronomeEnabled],
@@ -130,10 +146,11 @@ export default function HomeScreen() {
       setTempoOverride(bpm);
       if (isPlaying && lastPlayedRef.current && currentRiff) {
         const newBpm = bpm ?? currentRiff.tempo_bpm;
-        const { events, loop } = lastPlayedRef.current;
+        const { events, loop, bars } = lastPlayedRef.current;
         audioEngine.play(events, newBpm, loop, {
           countIn: false,
           metronome: metronomeEnabled,
+          bars,
         });
       }
     },

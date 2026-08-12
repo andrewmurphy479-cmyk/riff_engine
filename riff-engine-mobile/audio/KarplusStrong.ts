@@ -156,10 +156,23 @@ export interface StereoSamples {
 }
 
 /**
- * Synthesize a guitar tone using extended Karplus-Strong algorithm.
- * Returns stereo Float32Arrays of PCM samples in [-1, 1] range.
+ * Per-string pan position, for callers that pan at playback time instead of
+ * baking it into the samples (see {@link synthesizeMono}).
  */
-export function synthesizeTone(opts: SynthOptions): StereoSamples {
+export function stringPan(guitarString?: GuitarString): number {
+  return guitarString ? STRING_PAN[guitarString] : 0;
+}
+
+/**
+ * Synthesize a guitar tone using extended Karplus-Strong algorithm.
+ * Returns MONO Float32 PCM in [-1, 1] — the signal before per-string panning.
+ *
+ * The live playback path (ToneBank) caches this and pans with a
+ * StereoPannerNode, which halves cache memory for identical output: the pan
+ * here is nothing but a static constant-power gain pair, the same law the
+ * node applies. Offline rendering still uses the stereo wrapper below.
+ */
+export function synthesizeMono(opts: SynthOptions): Float32Array<ArrayBuffer> {
   const {
     midiNote,
     durationMs,
@@ -378,9 +391,18 @@ export function synthesizeTone(opts: SynthOptions): StereoSamples {
     mono[i] *= gain;
   }
 
-  // --- Stereo panning ---
-  const pan = guitarString ? STRING_PAN[guitarString] : 0;
-  const gains = panToGains(pan);
+  return mono;
+}
+
+/**
+ * Stereo tone: {@link synthesizeMono} with the per-string constant-power pan
+ * baked into the samples. Used by the offline/export render path, where there
+ * is no node graph to pan with.
+ */
+export function synthesizeTone(opts: SynthOptions): StereoSamples {
+  const mono = synthesizeMono(opts);
+  const gains = panToGains(stringPan(opts.guitarString));
+  const numSamples = mono.length;
 
   const left = new Float32Array(numSamples);
   const right = new Float32Array(numSamples);
