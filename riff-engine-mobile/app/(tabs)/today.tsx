@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useAudioEngine } from "../../audio/AudioEngine";
+import { RiffCoachingCard } from "../../components/RiffCoachingCard";
 import { RiffTabView } from "../../components/RiffTabView";
 import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { riffSpecToEvents } from "../../engine/riff/toEvents";
@@ -314,6 +315,9 @@ export default function TodayScreen() {
               contentContainerStyle={styles.sheetContent}
               showsVerticalScrollIndicator={false}
             >
+              {/* What this riff asks of your hands, before the notation. */}
+              <RiffCoachingCard riff={session.riffs[openIdx]} />
+
               <RiffTabView
                 riff={session.riffs[openIdx]}
                 activeStep={playingIdx === openIdx ? activeStep : null}

@@ -114,8 +114,13 @@ const SESSION_RIFF_COUNT = 4;
  * Some themes (legato) can't be expressed as a generator constraint and have to
  * filter after the fact; this bounds the cost of that. On exhaustion we keep
  * the last riff — a slightly off-theme riff beats a missing one.
+ *
+ * 20 rather than a handful because the weakest legato template only clears the
+ * slur threshold about a third of the time: at 10 attempts roughly one session
+ * in 17 shipped an off-theme riff, at 20 it is under one in 200. Generation is
+ * ~1ms, and the retries only happen on the riffs that need them.
  */
-const THEME_ACCEPT_ATTEMPTS = 10;
+const THEME_ACCEPT_ATTEMPTS = 20;
 
 /** A theme is only useful if every string the UI renders is actually there. */
 function isValidTheme(theme: unknown): theme is SessionTheme {
