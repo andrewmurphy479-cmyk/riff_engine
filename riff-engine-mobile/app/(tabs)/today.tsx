@@ -41,6 +41,7 @@ export default function TodayScreen() {
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
   const [activeStep, setActiveStep] = useState<number | null>(null);
   const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [themeOpen, setThemeOpen] = useState(false);
   const playStartRef = useRef<number | null>(null);
 
   const flushSeconds = useCallback(() => {
@@ -175,6 +176,38 @@ export default function TodayScreen() {
             <Text style={styles.completeNote}>
               You hit today's goal — streak secured. 🔥
             </Text>
+          )}
+        </View>
+
+        {/* Today's lesson — what these four riffs have in common, and why */}
+        <View style={styles.themeCard}>
+          <View style={styles.themeHeader}>
+            <Ionicons
+              name="school-outline"
+              size={16}
+              color={colors.accent}
+            />
+            <Text style={styles.themeKicker}>TODAY'S FOCUS</Text>
+          </View>
+          <Text style={styles.themeLabel}>{session.theme.label}</Text>
+          <Text style={styles.themeFocus}>{session.theme.focus}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              hapticTap();
+              setThemeOpen((v) => !v);
+            }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={
+              themeOpen ? "Hide lesson detail" : "Show lesson detail"
+            }
+          >
+            <Text style={styles.themeMore}>
+              {themeOpen ? "Less" : "What is this?"}
+            </Text>
+          </TouchableOpacity>
+          {themeOpen && (
+            <Text style={styles.themeBlurb}>{session.theme.blurb}</Text>
           )}
         </View>
 
@@ -427,6 +460,39 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.success,
     marginTop: spacing.md,
+  },
+  themeCard: {
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(249, 115, 22, 0.22)",
+    padding: spacing.lg,
+    gap: 6,
+  },
+  themeHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  themeKicker: {
+    ...typography.small,
+    color: colors.accent,
+    letterSpacing: 1.2,
+    fontWeight: "700",
+  },
+  themeLabel: { ...typography.h3, color: colors.textPrimary },
+  themeFocus: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    lineHeight: 19,
+  },
+  themeMore: {
+    ...typography.small,
+    color: colors.accent,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  themeBlurb: {
+    ...typography.caption,
+    color: colors.textMuted,
+    lineHeight: 19,
+    marginTop: 2,
   },
   riffCard: {
     flexDirection: "row",

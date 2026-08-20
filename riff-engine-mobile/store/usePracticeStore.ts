@@ -4,6 +4,11 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { generateSafe } from "../engine/riff/generate";
 import { Feel, Level } from "../engine/riff/rhythm";
 import { RiffSpec } from "../engine/riff/spec";
+import {
+  MIXED_SET_THEME,
+  planSession,
+  SessionTheme,
+} from "../engine/riff/themes";
 import { GUITAR_KEYS } from "./useNewRiffStore";
 
 // ---------------------------------------------------------------------------
@@ -82,6 +87,8 @@ export interface PracticeProfile {
 
 export interface DailySession {
   date: string; // dayKey when built
+  /** What today drills. Determined by the date, so a re-roll keeps it. */
+  theme: SessionTheme;
   riffs: RiffSpec[];
   completed: boolean[];
   goalCount: number; // riffs needed to "complete" the day
@@ -103,6 +110,26 @@ export interface PracticeStats {
 const SESSION_RIFF_COUNT = 4;
 
 /**
+ * How many times to re-roll a riff that fails its theme's acceptance test.
+ * Some themes (legato) can't be expressed as a generator constraint and have to
+ * filter after the fact; this bounds the cost of that. On exhaustion we keep
+ * the last riff — a slightly off-theme riff beats a missing one.
+ */
+const THEME_ACCEPT_ATTEMPTS = 10;
+
+/** A theme is only useful if every string the UI renders is actually there. */
+function isValidTheme(theme: unknown): theme is SessionTheme {
+  if (typeof theme !== "object" || theme === null) return false;
+  const t = theme as Record<string, unknown>;
+  return (
+    typeof t.id === "string" &&
+    typeof t.label === "string" &&
+    typeof t.blurb === "string" &&
+    typeof t.focus === "string"
+  );
+}
+
+/**
  * Structural check on a persisted session. Sessions persist full RiffSpec
  * blobs, so an engine shape change can strand returning users with specs the
  * app can no longer render. Rather than trusting stored data, anything that
@@ -116,6 +143,7 @@ export function isValidSession(session: unknown): session is DailySession {
   if (typeof s.goalCount !== "number" || typeof s.credited !== "boolean") {
     return false;
   }
+  if (!isValidTheme(s.theme)) return false;
   if (!Array.isArray(s.completed) || !s.completed.every((c) => typeof c === "boolean")) {
     return false;
   }
@@ -164,16 +192,27 @@ interface PracticeState {
 }
 
 function buildSession(profile: PracticeProfile): DailySession {
-  const riffs: RiffSpec[] = [];
-  for (let i = 0; i < SESSION_RIFF_COUNT; i++) {
-    // Vary the key across the day's riffs so a session isn't all one key.
-    const key = GUITAR_KEYS[Math.floor(Math.random() * GUITAR_KEYS.length)];
-    riffs.push(
-      generateSafe({ key, level: profile.level, feel: profile.preferredFeel }),
-    );
-  }
+  const date = dayKey();
+  const plan = planSession({
+    level: profile.level,
+    feel: profile.preferredFeel,
+    keys: GUITAR_KEYS,
+    count: SESSION_RIFF_COUNT,
+    dayKey: date,
+  });
+
+  const riffs = plan.plans.map((opts) => {
+    let riff = generateSafe(opts);
+    if (!plan.accept) return riff;
+    for (let i = 0; i < THEME_ACCEPT_ATTEMPTS && !plan.accept(riff); i++) {
+      riff = generateSafe({ ...opts, seed: null });
+    }
+    return riff;
+  });
+
   return {
-    date: dayKey(),
+    date,
+    theme: plan.theme,
     riffs,
     completed: riffs.map(() => false),
     goalCount: SESSION_RIFF_COUNT,
@@ -287,20 +326,32 @@ export const usePracticeStore = create<PracticeState>()(
         streak: state.streak,
         stats: state.stats,
       }),
-      version: 2,
+      version: 3,
       migrate: (persisted: any, version: number) => {
+        let next = persisted;
+
+        // v3: sessions carry a theme. Backfill the unthemed descriptor onto an
+        // otherwise-good session rather than dropping it — this runs mid-day for
+        // upgrading users, and losing their progress to a cosmetic field would
+        // be a bad trade. Run before v2's validation, which now requires it.
+        if (version < 3 && next?.session && !next.session.theme) {
+          next = {
+            ...next,
+            session: { ...next.session, theme: MIXED_SET_THEME },
+          };
+        }
+
         // v2: sessions persist engine RiffSpec blobs; validate instead of
         // trusting them. Profile/streak/stats survive; an unparseable session
         // is dropped and rebuilt by ensureTodaySession on next launch.
         if (version < 2) {
-          return {
-            ...persisted,
-            session: isValidSession(persisted?.session)
-              ? persisted.session
-              : null,
+          next = {
+            ...next,
+            session: isValidSession(next?.session) ? next.session : null,
           };
         }
-        return persisted;
+
+        return next;
       },
     },
   ),

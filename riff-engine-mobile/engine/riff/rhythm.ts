@@ -280,3 +280,20 @@ export function pickTemplate(
   }
   return rng.choice(pool);
 }
+
+/**
+ * Look up a template by name. Themed sessions pin one rhythm across the day's
+ * riffs, so they need name -> template resolution the random picker skips.
+ */
+export function templateByName(name: string): RhythmTemplate | null {
+  return RHYTHM_LIBRARY.find((t) => t.name === name) ?? null;
+}
+
+/** Names of every template a given level is allowed to play, in library order. */
+export function templateNamesForLevel(
+  level: Level,
+  feel: Feel | null = null,
+): string[] {
+  const pool = feel ? byFeel(feel) : RHYTHM_LIBRARY;
+  return pool.filter((t) => allowedForLevel(t, level)).map((t) => t.name);
+}

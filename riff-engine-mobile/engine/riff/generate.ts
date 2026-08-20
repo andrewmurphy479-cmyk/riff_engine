@@ -1,6 +1,14 @@
 import { addDiads } from "./diads";
 import { assignPositions, passesStretchCheck } from "./playability";
-import { Feel, FEEL_DYNAMICS, Level, pickTemplate } from "./rhythm";
+import {
+  allowedForLevel,
+  Feel,
+  FEEL_DYNAMICS,
+  Level,
+  pickTemplate,
+  RhythmTemplate,
+  templateByName,
+} from "./rhythm";
 import { Rng } from "./rng";
 import { notePool } from "./scale";
 import { Bar, Note, RiffSpec } from "./spec";
@@ -55,6 +63,19 @@ export interface GenerateOptions {
   seed?: number | null;
   include_blue?: boolean;
   max_attempts?: number;
+  /**
+   * Pin the rhythm template by name instead of drawing one from the feel pool.
+   * Themed sessions drill a single rhythm across the day's riffs. Throws if the
+   * name is unknown or the template is above `level`'s density cap —
+   * {@link generateSafe} relaxes it rather than silently ignoring it.
+   */
+  rhythm_name?: string | null;
+  /**
+   * Force palm-mute tagging regardless of the per-feel mute roll. Mutes still
+   * only land where {@link tagMutes} allows (short notes, two lowest strings),
+   * so this raises the odds rather than guaranteeing them.
+   */
+  force_mutes?: boolean;
 }
 
 export function generate(opts: GenerateOptions = {}): RiffSpec {
@@ -66,7 +87,25 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
     seed: providedSeed = null,
     include_blue: explicitBlue,
     max_attempts = 10,
+    rhythm_name = null,
+    force_mutes = false,
   } = opts;
+
+  // Resolve a pinned template up front: an unknown or over-cap name is a
+  // constraint failure, not a per-attempt one, so fail before the loop and let
+  // generateSafe drop the pin.
+  let pinned: RhythmTemplate | null = null;
+  if (rhythm_name) {
+    pinned = templateByName(rhythm_name);
+    if (!pinned) {
+      throw new Error(`unknown rhythm template ${JSON.stringify(rhythm_name)}`);
+    }
+    if (!allowedForLevel(pinned, level)) {
+      throw new Error(
+        `rhythm template ${rhythm_name} exceeds the ${level} density cap`,
+      );
+    }
+  }
 
   const seed = providedSeed ?? Math.floor(Math.random() * 2 ** 31);
   const rng = new Rng(seed);
@@ -85,7 +124,7 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
   }
 
   for (let attempt = 0; attempt < max_attempts; attempt++) {
-    const template = pickTemplate(rng, feel, level);
+    const template = pinned ?? pickTemplate(rng, feel, level);
     const phrase = buildPhrase(template, pool, rng, key);
 
     const flatMidi = phrase.flat().map((s) => s.midi);
@@ -135,7 +174,7 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
 
     let tagged = tagTechniques(bars);
     const muteRoll = rng.random();
-    if (template.pedal || muteRoll < MUTE_CHANCE[template.feel]) {
+    if (force_mutes || template.pedal || muteRoll < MUTE_CHANCE[template.feel]) {
       tagged = tagMutes(tagged, accentSet);
     }
 
@@ -178,7 +217,8 @@ export function generate(opts: GenerateOptions = {}): RiffSpec {
  * Crash-proof wrapper around {@link generate}. A single call can throw when a
  * key/feel/level combo is over-constrained and it exhausts its attempts. Each
  * call uses a fresh random seed, so this retries — and progressively relaxes
- * feel, then key — until it gets a playable riff, guaranteeing a RiffSpec.
+ * the rhythm pin, then feel, then key — until it gets a playable riff,
+ * guaranteeing a RiffSpec.
  *
  * Use this anywhere a throw would reach the UI (generation on user actions).
  */
@@ -186,8 +226,24 @@ export function generateSafe(opts: GenerateOptions = {}): RiffSpec {
   const plans: GenerateOptions[] = [
     { ...opts, max_attempts: opts.max_attempts ?? 30 },
     { ...opts, seed: null, max_attempts: 30 }, // fresh seed, same constraints
-    { ...opts, seed: null, feel: null, max_attempts: 30 }, // drop feel
-    { ...opts, seed: null, feel: null, key: undefined, max_attempts: 50 }, // drop key too
+    // A pin is a promise the UI has already made ("today is gallop day"), so
+    // spend a bigger attempt budget before breaking it. Tight beginner stretch
+    // limits plus a pedal template is the combination that needs this.
+    ...(opts.rhythm_name
+      ? [{ ...opts, seed: null, max_attempts: 200 } as GenerateOptions]
+      : []),
+    // Drop the rhythm pin before the feel: a themed session would rather keep
+    // its feel and lose the exact template than the other way round.
+    { ...opts, seed: null, rhythm_name: null, max_attempts: 30 },
+    { ...opts, seed: null, rhythm_name: null, feel: null, max_attempts: 30 },
+    {
+      ...opts,
+      seed: null,
+      rhythm_name: null,
+      feel: null,
+      key: undefined,
+      max_attempts: 50,
+    },
   ];
   for (const plan of plans) {
     try {
