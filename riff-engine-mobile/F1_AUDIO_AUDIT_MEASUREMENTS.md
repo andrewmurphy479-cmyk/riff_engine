@@ -20,9 +20,9 @@ A1/A2/A7 are device-only. **A3** now self-reports — `playbackGraph.ts` logs
 | A4 | Cache memory | **Halved** — mono buffers + `StereoPannerNode`. 327 MB → 163.5 MB at 400 riffs |
 | A5 | Loop length | **Fixed** — whole-bar iterations; 100% correct across the corpus, locked by `audio/loopLength.test.ts` |
 | A6 | Timer array | **Won't fix** — measured under 50 KB, not worth the churn |
-| A7 | Bluetooth latency | **Open** — needs device measurement; the library exposes no `outputLatency` |
+| A7 | Bluetooth latency | **Open** — needs device measurement; the library exposes no `outputLatency`. Re-homed from F2 to land with O1 (guided drill), where the playhead becomes load-bearing |
 | A8 | Cold first-play | **Moved off the tap** — screens warm the cache on riff display |
-| A9 | Export/live divergence | **Open** — already on the F2 list |
+| A9 | Export/live divergence | **Fixed** 2026-08-20 — export renders through the live signal path; shared IR/limiter (`audio/masterChain.ts`) and shared scheduling rules (`audio/timing.ts`) |
 
 Numbers below are the *measured* before/after. Everything except A3 is JS-only;
 no rebuild needed.

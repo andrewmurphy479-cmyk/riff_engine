@@ -1,6 +1,27 @@
 # Riffology — Master Plan
 
-*Written 2026-07-14, after a full codebase audit (engine, audio, UI/UX, ship-readiness). Revised 2026-07-18 after Sprints 1–4 — see "The pay-worthiness pivot" below.*
+*Written 2026-07-14, after a full codebase audit (engine, audio, UI/UX, ship-readiness). Revised 2026-07-18 after Sprints 1–4 — see "The pay-worthiness pivot" below. Revised again 2026-08-20 after F1 — see "The teaching pivot".*
+
+---
+
+## Revision 2026-08-20 — the teaching pivot (F2 deferred)
+
+F1 landed and the listen gate passed, twice: *"sounds soooooooo much better"* after the architecture swap, *"sounding really nice"* after the audit fixes. A follow-up listen confirmed the sound is no longer the thing holding the app back.
+
+**So F2 (real multisampled guitar) is deferred, not cancelled.** It moves to the post-beta bucket alongside A5–A7, to be informed by beta feedback rather than guessed at now. The reasoning:
+
+- **F1 already taught this lesson once.** Choppiness was assumed to be a timbre problem; fixing the architecture made it disappear with the Karplus-Strong timbre untouched. Perceived synthiness plausibly had the same cause, and the listen test is the evidence.
+- **F2 is the riskiest item on the roadmap and the only one blocked externally** — it cannot start until a commercial-use-safe multisampled guitar is *found and licensed*. Everything else is a code problem.
+- **It reverses work just done.** Audit A4 took resident memory from 327 MB to 163.5 MB with mono buffers; velocity-layered samples push straight back the other way, plus bundle size.
+- **Sound is a ceiling on enjoyment; product depth is the reason to subscribe.** With the sound no longer a dealbreaker, Phase G is strictly higher leverage — and it shapes the persisted data model, so it only gets more expensive to retrofit.
+- **F2 stays a cheap swap later.** `SynthOptions`/ToneBank already abstract tone production.
+
+**A7 and A9 were parked "with F2" and are re-homed** — the pivot raises both:
+
+- **A9 (export/live divergence) — DONE**, and it was a prerequisite, not a footnote. Exports rendered through a completely different signal path, so sharing a riff (or judging the sound from an export) measured the wrong renderer.
+- **A7 (Bluetooth playhead latency) — still open, moves to sit with O1.** Guided practice makes the playhead *load-bearing*: it stops being decoration and becomes the thing telling a learner where the beat is. On Bluetooth, a playhead running ahead of the audio teaches wrong timing. Needs device measurement or a user-facing calibration; the library exposes no `outputLatency`.
+
+**Sprint 6 becomes the teaching sprint** (Phase G, pulled forward). See "Phase G" below for the ranked options and what shipped.
 
 ---
 
@@ -191,7 +212,7 @@ expo-av is deprecated and **removed in SDK 55**. The original plan was a like-fo
 
 *The ceiling on everything musical. The choppiness post-mortem (2026-07-17/18) proved the current architecture — JS-thread Karplus-Strong synthesis → one base64 WAV per note → expo-av clip players — cannot deliver: per-clip baked reverb stacks wet tails, bridge-latency volume ramps can't choke cleanly, and pre-generation cost scales with clip length (the reverted ring-length fix lagged the play button for seconds). Architecture first, timbre second, so failures are attributable.*
 
-### F1. Playback architecture: Web Audio via `react-native-audio-api`
+### F1. Playback architecture: Web Audio via `react-native-audio-api` — **DONE** (Sprint 5, `98c0cab`; audit fixes `6f8f329` + `5035506`)
 Software Mansion's [react-native-audio-api](https://docs.swmansion.com/react-native-audio-api/) — a Web Audio API implementation for React Native, active, with an [Expo config plugin](https://docs.swmansion.com/react-native-audio-api/docs/other/audio-api-plugin/). Requires an **Expo dev build** (not Expo Go) — which drags `eas.json` + the dev-build workflow (part of D1) forward as a side effect.
 - [ ] Add the plugin, set up EAS dev builds (iOS first), verify the audio session/silent-switch behavior `setAudioModeAsync` used to handle.
 - [ ] New playback core: tones decoded once into `AudioBuffer`s; notes scheduled as `AudioBufferSourceNode`s on the audio clock (no per-note WAV writes, no `setTimeout` scheduling).
@@ -201,19 +222,39 @@ Software Mansion's [react-native-audio-api](https://docs.swmansion.com/react-nat
 - [ ] Fix the old D2 items: init must not swallow failures into silent no-op audio.
 - [ ] Keep the KS *timbre* this sprint — same sound source, new scheduling/mixing. **Gate: on-device listen** (post-mortem lesson: offline RMS probes are not validation). Expected wins even before samples: no dead-air chop, clean chokes, instant play button.
 
-### F2. Real instrument samples
+### F2. Real instrument samples — **DEFERRED 2026-08-20** (post-beta bucket; see the teaching pivot above)
 - [ ] Source a multisampled electric guitar with a commercial-use-safe license (velocity layers; a palm-mute articulation set is near-mandatory — check FreePats, Karoryfer, VSCO/Versilian, etc.). License review before integration.
 - [ ] Sample pipeline (offline tool): trim/normalize/loop-check → app-bundled assets; mapping table midi+velocityLayer+technique → sample file + playbackRate (pitch-shift between sampled semitones).
 - [ ] Techniques on samples: `mute` → dedicated PM samples; hammer/pull → attack shaping/fast retrigger; (bends/slides later via playbackRate automation — unlocks A6 cheaply).
 - [ ] Metronome clicks stay synthesized; KS synth demoted to fallback.
-- [ ] AudioExporter/share + `npm run batch` render from the same samples so exports match in-app sound.
+- [x] ~~AudioExporter/share + `npm run batch` render from the same samples so exports match in-app sound.~~ **Superseded by A9 (done):** export and live now share one impulse response, one limiter, and one set of scheduling rules (`audio/masterChain.ts`, `audio/timing.ts`), so whatever the tone source is, both paths use it.
 - [ ] **Gate: the 30-second test, on device** — a generated riff sounds like a guitar, not a synth. This is the phase the whole strategic frame has been waiting on.
 
 ---
 
-## Phase G — Make it worth paying for (product depth) *(added 2026-07-18)*
+## Phase G — Make it worth paying for (product depth) *(added 2026-07-18; started Sprint 6, 2026-08-20)*
 
 *Owner verdict: generator + streak alone isn't a subscription. Scope this phase properly at sprint start — but ranked candidates, strongest evidence first:*
+
+### Sprint 6 — the teaching slice
+
+The diagnosis going in: **the app had teaching content but no teaching structure.** `display.ts` holds genuinely good writing (the rhythm descriptions are the best copy in the app) but it lived only in Explore, the tab a habit user opens least. Today — where the habit actually happens — taught nothing: four unrelated riffs and a checkbox. Nothing sequenced, nothing adapted, and "mark done" recorded a single self-reported bit.
+
+Options were ranked O1–O7; O3 → O2 → O1 shipped first because each makes the next worth more.
+
+- [x] **O3 — themed sessions** (`206368a`). The day drills one thing, rotating across four families (a rhythm across four keys, one key across four rhythms, palm-mute bootcamp, legato day). Theme derives from the date, so a re-roll keeps the lesson and swaps the riffs. `GenerateOptions` gained `rhythm_name` and `force_mutes`. **The generator's real advantage over a fixed tab library is endless variations of one *constrained* thing — which is also how practice works — and the session had been spending that on random draws.**
+- [x] **O2 — derived coaching** (`ac8211a`). "How to play it", derived per *feature* from the spec (technique tags, reach vs. travel, subdivision, repeated bars) rather than authored per riff. In Today's practice sheet.
+- [ ] **O1 — guided practice drill.** Count-in → loop the hard bar slow → tempo ramp → full play-through, over primitives Sprint 3 already shipped. **Blocked on a product decision, not code:** it changes what "done" means, from one self-reported bit to tempo reached / reps / bars looped. That is a persisted-data decision — cheap to build in now, expensive to retrofit once users have practice history. O4 and O5 both depend on it.
+- [ ] **A7 — playhead latency** lands with O1 (see the pivot note above).
+
+**Two findings worth carrying forward.** Both were cases where a themed feature would have *silently lied* rather than failed, and both were only caught by measuring rather than reasoning:
+
+1. **Pedal templates in the key of D yield zero palm mutes — 100% of the time, at every level.** The pedal root (D3) sits on the *open* D string, which `assignPositions` prefers because open strings cost nothing to move to, and `tagMutes` only reaches the two lowest strings. "Palm-mute bootcamp" in D would have contained no palm muting.
+2. **Unpinned legato days cleared the slur threshold as rarely as 5% of the time.** Hammer/pull needs consecutive same-string notes a fret or two apart; pedal templates repeat one fret and score ~0%.
+
+*Any future theme needs the same treatment: measure whether the constraint actually produces the thing it promises, across every key and level, before shipping the copy that promises it.*
+
+### Remaining Phase G candidates
 
 - [ ] **Chord Armory expansion** — historically the owner's favorite feature alongside the tab visualizer. Custom chord adding, more voicings/qualities, richer theory info, and a chord→riff bridge ("generate a riff over this chord") that ties the Armory into the moat.
 - [ ] **Curriculum-lite paths** (Phase 4 of the product roadmap, pulled forward): multi-day structured arcs ("Palm-mute bootcamp," "Pentatonic positions week") that sequence generated riffs + Armory content with a narrative. This is the clearest "thing you subscribe to."
@@ -239,19 +280,22 @@ Sprint 1  A0 unfreeze + A1 dynamics + A2 palm-mute chugs                    ← 
 Sprint 2  A3 power chords + A4 templates/swing (+ D4 store-migrate prereq)  ← DONE
 Sprint 3  B1 playhead/metronome/count-in + B2 share export                  ← DONE
 Sprint 4  B3 design + B4 branding + B5 settings + B6 haptics                ← DONE
-Sprint 5  F1 audio architecture (react-native-audio-api, dev build, shared FX, ring decays)
-Sprint 6  F2 real samples → on-device sound gate: "sounds like a guitar"
-Sprint 7  G product depth wave 1 (scope at sprint start; leading: Armory expansion + curriculum-lite)
+Sprint 5  F1 audio architecture (react-native-audio-api, dev build, shared FX)  ← DONE
+Sprint 6  G teaching slice: O3 themes + O2 coaching + A9 export/live  ← O3/O2/A9 DONE
+          remaining: O1 guided drill (+ A7 playhead latency)
+Sprint 7  G wave 2: O4 skill model → O5 curriculum paths
 Sprint 8  H polish audit + real icon/splash
 Sprint 9  D remainder (D1 minus icon, D3 Sentry/analytics, D4 tests/CI)
           → TestFlight beta gate: would guitarists pay for this?
 Sprint 10 C retention loop (notifications, streak insurance, recap)
 Sprint 11 E monetization + store listing → launch
-          (A5–A7 second engine wave: post-beta, informed by feedback)
+          (F2 real samples + A5–A7: post-beta, informed by feedback)
 ```
 
 Hard sequencing rules:
 1. ~~`usePracticeStore` migration hygiene before A3~~ — done (Sprint 2).
 2. **Every audio change is judged by an on-device listen** — never by offline probes alone (lesson of the `34661aa` revert).
-3. **F1 before F2** — swap the architecture with the timbre held constant, then swap the timbre. Never both at once.
+3. ~~**F1 before F2**~~ — F1 done; F2 deferred post-beta (2026-08-20). The rule it encoded still stands: never swap architecture and timbre at once.
 4. **Beta gate after Sprint 9, before retention/monetization** — and the gate question has changed from "do they like the sound?" to "would they pay?"
+5. **O1 before O4/O5.** A skill model and curriculum paths both need practice data that does not exist yet; "mark done" is one self-reported bit. Building them on it would mean adapting to a number that measures nothing.
+6. **A theme must be measured, not reasoned about.** Before shipping copy that promises a technique, verify the constraint produces it across every key and level — two themes silently promised techniques they did not deliver (see Phase G).
