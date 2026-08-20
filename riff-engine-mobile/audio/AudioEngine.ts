@@ -24,6 +24,13 @@ import {
   SUB_TICK_VOLUME,
 } from './toneBank';
 import { fretToMidiNote } from './noteMapping';
+import {
+  CHOKE_FADE_S,
+  groupedJitter,
+  polyphonyScale,
+  STEPS_PER_BEAT,
+  strumDelay,
+} from './timing';
 
 const STRING_TO_INDEX: Record<GuitarString, number> = {
   E: 0,
@@ -34,9 +41,6 @@ const STRING_TO_INDEX: Record<GuitarString, number> = {
   e: 5,
 };
 
-// Same-string choke: fade the old note out over 25ms starting at the new
-// note's onset (a fretting hand damping the string).
-const CHOKE_FADE_S = 0.025;
 // Lead time between scheduling and the first sound — enough to enqueue every
 // source; short enough that the play button still feels instant.
 const START_LATENCY_S = 0.08;
@@ -44,8 +48,6 @@ const START_LATENCY_S = 0.08;
 // downbeat itself stays sample-accurate (anchored to the audio clock); this
 // only controls when the JS scheduling work happens.
 const LOOP_LOOKAHEAD_MS = 250;
-const STRUM_INTERVAL_S = 0.012;
-const STEPS_PER_BEAT = 4;
 // How long a riff must sit on screen before its tones are warmed (audit A8).
 const PREPARE_DELAY_MS = 350;
 
@@ -242,14 +244,7 @@ class AudioEngineImpl {
     }
 
     // Fresh grouped jitter per iteration so loops don't sound mechanical.
-    const stepJitter = new Map<number, number>();
-    for (const event of events) {
-      if (!stepJitter.has(event.step)) {
-        const isDownbeat = (event.step % 16) % 4 === 0;
-        const jitterRange = isDownbeat ? 0.003 : 0.008;
-        stepJitter.set(event.step, (Math.random() - 0.5) * 2 * jitterRange);
-      }
-    }
+    const stepJitter = groupedJitter(events.map((e) => e.step));
 
     // Playhead callbacks ride JS timers aimed at the audio-clock times.
     if (this.config.onStepPlay) {
@@ -289,18 +284,18 @@ class AudioEngineImpl {
 
       const velocity = event.velocity ?? 0.7;
       const count = stepNoteCounts.get(event.step) ?? 1;
-      const polyScale = count > 1 ? 1 / Math.sqrt(count) : 1;
+      const polyScale = polyphonyScale(count);
 
       const strumIdx = stepStrumIndex.get(event.step) ?? 0;
       stepStrumIndex.set(event.step, strumIdx + 1);
-      const strumDelay = count > 1 ? strumIdx * STRUM_INTERVAL_S : 0;
+      const strum = strumDelay(strumIdx, count);
 
       const t = Math.max(
         ctx.currentTime + 0.005,
         notesStart +
           (event.step + (event.swingOffset ?? 0)) * secPerStep +
           (stepJitter.get(event.step) ?? 0) +
-          strumDelay
+          strum
       );
       this.startVoice(
         buffer,

@@ -48,6 +48,31 @@ export interface ToneSpec {
   durationMs?: number;
 }
 
+/**
+ * Natural ring length for a note, in ms — the duration its buffer is
+ * synthesized at, independent of the notated grid duration.
+ *
+ * Exported because the offline renderer has to ring notes for exactly as long
+ * as live playback does (audit A9). It used to render each note at its notated
+ * duration, so exports had none of the natural ring the F1 work introduced.
+ */
+export function ringMsFor(
+  guitarString: GuitarString,
+  technique?: Technique,
+): number {
+  return technique === 'mute' ? MUTE_RING_MS : RING_MS[guitarString];
+}
+
+/**
+ * The velocity a tone is actually *synthesized* at: quantized to its layer, so
+ * one cached buffer serves a range of velocities. The remaining loudness
+ * difference is applied downstream as gain — live by the voice's GainNode,
+ * offline by scaling the samples.
+ */
+export function layerVelocity(velocity: number): number {
+  return layerToVelocity(velocityToLayer(velocity));
+}
+
 /** Quantize velocity to a synth layer so timbre buckets stay cacheable. */
 export function velocityToLayer(velocity: number): VelocityLayer {
   if (velocity < 0.2) return 'pp';

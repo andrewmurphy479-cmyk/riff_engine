@@ -22,56 +22,23 @@ import {
   WaveShaperNode,
 } from 'react-native-audio-api';
 import { SAMPLE_RATE } from './KarplusStrong';
+import {
+  makeImpulseResponse,
+  makeSoftKneeCurve,
+  REVERB_SEND_LEVEL,
+} from './masterChain';
 
-// Wet level for the shared room. The old per-clip bake used 0.08 per note; a
-// bus send reads louder on dense riffs because tails overlap, so stay modest.
-const REVERB_SEND_LEVEL = 0.12;
-const IR_SECONDS = 1.3;
-const IR_PREDELAY_S = 0.015;
+// The room and the limiter live in masterChain so the offline renderer
+// (AudioExporter, tools/batch.ts) convolves against the same IR and shapes
+// with the same curve. Audit A9: these used to be two different renderers and
+// a shared riff did not sound like the app that made it.
 
-// Soft-knee limiter curve: unity below the knee, tanh compression above it,
-// C1-continuous at the join. Keeps six overlapping ring tails from hard
-// clipping at the destination without audibly coloring normal levels.
-const KNEE_START = 0.6;
-const KNEE_RANGE = 0.35; // asymptote at KNEE_START + KNEE_RANGE = 0.95
-
-function makeSoftKneeCurve(): Float32Array<ArrayBuffer> {
-  const N = 2048;
-  const curve = new Float32Array(N);
-  for (let i = 0; i < N; i++) {
-    const x = (i / (N - 1)) * 2 - 1;
-    const ax = Math.abs(x);
-    const shaped =
-      ax <= KNEE_START
-        ? ax
-        : KNEE_START + KNEE_RANGE * Math.tanh((ax - KNEE_START) / KNEE_RANGE);
-    curve[i] = Math.sign(x) * shaped;
-  }
-  return curve;
-}
-
-// Exponentially decaying stereo noise, progressively low-passed so the tail
-// darkens as it dies — reads as a small room. Channels use independent noise
-// for width. ConvolverNode normalizes the IR, so level is stable regardless
-// of IR energy.
-function makeImpulseResponse(ctx: AudioContext) {
-  const length = Math.floor(SAMPLE_RATE * IR_SECONDS);
-  const preSamples = Math.floor(SAMPLE_RATE * IR_PREDELAY_S);
-  const buffer = ctx.createBuffer(2, length, SAMPLE_RATE);
-
-  for (let ch = 0; ch < 2; ch++) {
-    const data = new Float32Array(length);
-    let lp = 0;
-    for (let i = preSamples; i < length; i++) {
-      const t = i / SAMPLE_RATE;
-      const decayPhase = (t - IR_PREDELAY_S) / (IR_SECONDS - IR_PREDELAY_S);
-      const env = Math.exp(-3.2 * decayPhase);
-      const coeff = 0.55 - 0.35 * decayPhase;
-      lp += coeff * (Math.random() * 2 - 1 - lp);
-      data[i] = lp * env;
-    }
-    buffer.copyToChannel(data, ch);
-  }
+/** Load the shared IR into a context-owned AudioBuffer. */
+function impulseResponseBuffer(ctx: AudioContext) {
+  const ir = makeImpulseResponse(SAMPLE_RATE);
+  const buffer = ctx.createBuffer(2, ir.left.length, SAMPLE_RATE);
+  buffer.copyToChannel(ir.left, 0);
+  buffer.copyToChannel(ir.right, 1);
   return buffer;
 }
 
@@ -150,7 +117,12 @@ class PlaybackGraphImpl {
     master.connect(limiter);
 
     const convolver = ctx.createConvolver();
-    convolver.buffer = makeImpulseResponse(ctx);
+    // masterChain pre-normalizes the IR with the Web Audio normalization
+    // formula, so the node must not apply its own on top — otherwise the
+    // offline path, which cannot call into the node, would sit at a different
+    // wet level than live.
+    convolver.normalize = false;
+    convolver.buffer = impulseResponseBuffer(ctx);
     convolver.connect(master);
 
     const reverbSend = ctx.createGain();
