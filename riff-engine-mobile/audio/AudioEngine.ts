@@ -67,6 +67,13 @@ interface AudioEngineConfig {
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
   onStepPlay?: (step: number) => void;
+  /**
+   * One complete pass of the riff (or of the looped bar) has finished. Fires
+   * for every iteration including the last, so a single non-looping play
+   * reports exactly one. The practice drill counts reps with this — inferring
+   * them from onStepPlay would miscount any riff whose first step is a rest.
+   */
+  onIteration?: () => void;
 }
 
 export interface PlayOptions {
@@ -312,6 +319,16 @@ class AudioEngineImpl {
     // is `iterEnd` on the audio clock, so the seam is sample-accurate
     // regardless of timer slop.
     const iterEnd = notesStart + totalDurationS;
+
+    // Rep counter, fired at the musical end of this pass whether or not it
+    // loops. Scheduled here rather than at the seam so the final iteration of
+    // a non-looping play still counts.
+    if (this.config.onIteration) {
+      this.addTimerAt(iterEnd, () => {
+        if (token === this.playToken) this.config.onIteration?.();
+      });
+    }
+
     const fireInMs = Math.max(
       0,
       (iterEnd - ctx.currentTime) * 1000 - LOOP_LOOKAHEAD_MS
@@ -584,6 +601,8 @@ export interface UseAudioEngineOptions {
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
   onStepPlay?: (step: number) => void;
+  /** One complete pass finished — see AudioEngineConfig.onIteration. */
+  onIteration?: () => void;
 }
 
 export interface AudioEngineRef {
@@ -604,6 +623,7 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
       onPlaybackStart: () => optionsRef.current.onPlaybackStart?.(),
       onPlaybackEnd: () => optionsRef.current.onPlaybackEnd?.(),
       onStepPlay: (step: number) => optionsRef.current.onStepPlay?.(step),
+      onIteration: () => optionsRef.current.onIteration?.(),
     });
 
     AudioEngine.initialize().catch((error) => {
