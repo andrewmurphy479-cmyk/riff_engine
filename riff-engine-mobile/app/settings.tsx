@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { PlayheadSyncRow } from "../components/PlayheadSyncRow";
 import { GENRES, usePracticeStore } from "../store/usePracticeStore";
 import { useNewRiffStore } from "../store/useNewRiffStore";
 import { borderRadius, colors, spacing, typography } from "../theme/colors";
@@ -145,6 +146,8 @@ export default function SettingsScreen() {
             accessibilityLabel="Count-in before playback"
           />
         </View>
+        <View style={styles.divider} />
+        <PlayheadSyncRow />
       </View>
 
       {/* About */}

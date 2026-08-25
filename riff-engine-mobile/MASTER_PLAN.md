@@ -244,8 +244,8 @@ Options were ranked O1–O7; O3 → O2 → O1 shipped first because each makes t
 
 - [x] **O3 — themed sessions** (`206368a`). The day drills one thing, rotating across four families (a rhythm across four keys, one key across four rhythms, palm-mute bootcamp, legato day). Theme derives from the date, so a re-roll keeps the lesson and swaps the riffs. `GenerateOptions` gained `rhythm_name` and `force_mutes`. **The generator's real advantage over a fixed tab library is endless variations of one *constrained* thing — which is also how practice works — and the session had been spending that on random draws.**
 - [x] **O2 — derived coaching** (`ac8211a`). "How to play it", derived per *feature* from the spec (technique tags, reach vs. travel, subdivision, repeated bars) rather than authored per riff. In Today's practice sheet.
-- [ ] **O1 — guided practice drill.** Count-in → loop the hard bar slow → tempo ramp → full play-through, over primitives Sprint 3 already shipped. **Blocked on a product decision, not code:** it changes what "done" means, from one self-reported bit to tempo reached / reps / bars looped. That is a persisted-data decision — cheap to build in now, expensive to retrofit once users have practice history. O4 and O5 both depend on it.
-- [ ] **A7 — playhead latency** lands with O1 (see the pivot note above).
+- [x] **O1 — guided practice drill.** Count-in → loop the hard bar slow → tempo ramp → full play-through, over primitives Sprint 3 already shipped. The product decision it was blocked on is settled: three named steps, every one skippable, recording tempo *and* reps per riff. `RiffResult` and the drill model landed first (`f5876c0`) so the persisted shape could be reviewed on its own; the sheet replaces Today's practice modal. "Mark done" stays alongside it — the drill is the offer, not a toll, and both credit the day through the same `creditRiff`. **The one line the UI must never cross: the app cannot hear the player.** A rep is "a pass finished at this tempo" and nothing else; the summary says so out loud. O4's skill model now has data to sit on.
+- [x] **A7 — playhead latency.** The visual playhead is now offset from the audio clock by a user-set `playheadOffsetMs`, adjusted by ear in Settings against a four-beat loop (react-native-audio-api still exposes no `outputLatency` to query — see the audit). Bluetooth runs 150-250ms behind; a playhead that leads teaches wrong timing, which was cosmetic until the drill made it the thing telling a learner where the beat is.
 
 **Two findings worth carrying forward.** Both were cases where a themed feature would have *silently lied* rather than failed, and both were only caught by measuring rather than reasoning:
 
@@ -281,15 +281,15 @@ Sprint 2  A3 power chords + A4 templates/swing (+ D4 store-migrate prereq)  ← 
 Sprint 3  B1 playhead/metronome/count-in + B2 share export                  ← DONE
 Sprint 4  B3 design + B4 branding + B5 settings + B6 haptics                ← DONE
 Sprint 5  F1 audio architecture (react-native-audio-api, dev build, shared FX)  ← DONE
-Sprint 6  G teaching slice: O3 themes + O2 coaching + A9 export/live  ← O3/O2/A9 DONE
-          remaining: O1 guided drill (+ A7 playhead latency)
+Sprint 6  G teaching slice: O3 themes + O2 coaching + A9 export/live
+          + O1 guided drill + A7 playhead latency                          ← DONE
 Sprint 7  G wave 2: O4 skill model → O5 curriculum paths
 Sprint 8  H polish audit + real icon/splash
 Sprint 9  D remainder (D1 minus icon, D3 Sentry/analytics, D4 tests/CI)
           → TestFlight beta gate: would guitarists pay for this?
 Sprint 10 C retention loop (notifications, streak insurance, recap)
 Sprint 11 E monetization + store listing → launch
-          (F2 real samples + A5–A7: post-beta, informed by feedback)
+          (F2 real samples + A5/A6: post-beta, informed by feedback)
 ```
 
 Hard sequencing rules:

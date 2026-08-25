@@ -133,6 +133,9 @@ class AudioEngineImpl {
   private isLooping = false;
   private loopContext: LoopContext | null = null;
   private config: AudioEngineConfig = {};
+  /** Visual-playhead offset in seconds; see setOutputLatency. */
+  private outputLatencyS = 0;
+
   /** Bumped by every play()/stop(); stale async work checks it and bails. */
   private playToken = 0;
   private isInitialized = false;
@@ -162,6 +165,37 @@ class AudioEngineImpl {
 
   setConfig(config: AudioEngineConfig): void {
     this.config = config;
+  }
+
+  /**
+   * Take over the callbacks, returning a restore function.
+   *
+   * A plain setConfig is last-writer-wins, which orphans the screen underneath
+   * whenever a modal that also drives audio (the practice drill, the playhead
+   * sync check) unmounts: its callbacks stay installed and the screen behind it
+   * silently loses its playhead. Restoring is a no-op if someone else has since
+   * taken over, so unmount order can't clobber a newer owner.
+   */
+  pushConfig(config: AudioEngineConfig): () => void {
+    const previous = this.config;
+    this.config = config;
+    return () => {
+      if (this.config === config) this.config = previous;
+    };
+  }
+
+  /**
+   * How far behind the audio clock the sound actually reaches the player's
+   * ears, in milliseconds (audit A7). Bluetooth adds 150-250ms; wired and
+   * built-in speakers are near zero. react-native-audio-api exposes no
+   * `outputLatency`, so this is a user-set value rather than a queried one.
+   *
+   * Applied ONLY to the visual playhead. Rep counting and loop seams stay on
+   * the audio clock: a delayed onIteration could land after onPlaybackEnd and
+   * lose the final rep of a drill.
+   */
+  setOutputLatency(ms: number): void {
+    this.outputLatencyS = Math.max(0, ms) / 1000;
   }
 
   async play(
@@ -264,7 +298,9 @@ class AudioEngineImpl {
           notesStart +
           (event.step + (event.swingOffset ?? 0)) * secPerStep +
           (stepJitter.get(event.step) ?? 0);
-        this.addTimerAt(t, () => {
+        // Offset so the playhead lands when the note is HEARD, not when it
+        // was scheduled — on Bluetooth those are a fifth of a second apart.
+        this.addTimerAt(t + this.outputLatencyS, () => {
           if (token === this.playToken) this.config.onStepPlay?.(step);
         });
       }
@@ -619,7 +655,10 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
   optionsRef.current = options;
 
   useEffect(() => {
-    AudioEngine.setConfig({
+    // Pushed, not set: a modal that drives audio (the practice drill) mounts on
+    // top of a screen that also does, and must hand the callbacks back when it
+    // closes rather than leave the screen below deaf.
+    const restore = AudioEngine.pushConfig({
       onPlaybackStart: () => optionsRef.current.onPlaybackStart?.(),
       onPlaybackEnd: () => optionsRef.current.onPlaybackEnd?.(),
       onStepPlay: (step: number) => optionsRef.current.onStepPlay?.(step),
@@ -632,6 +671,7 @@ export function useAudioEngine(options: UseAudioEngineOptions = {}): AudioEngine
 
     return () => {
       AudioEngine.stop();
+      restore();
     };
   }, []);
 

@@ -134,3 +134,33 @@ export function rungForRep(
     repsIntoRung: repsDone - rungIndex * perRung,
   };
 }
+
+/** One block of passes at a single tempo, which is what a play() call covers. */
+export interface DrillRun {
+  /** Tempo rung these passes sit at, as a percentage of the riff's tempo. */
+  tempoPct: number;
+  /** Rep count the step will stand at once this run is done. */
+  endsAtRep: number;
+  /** Passes this run plays. */
+  passes: number;
+  /** Whether the engine should loop, i.e. this run is more than one pass. */
+  loop: boolean;
+}
+
+/**
+ * The next block of passes to play, resuming from `repsDone`.
+ *
+ * A step is played as one engine call per tempo rung rather than one per pass:
+ * the engine loops a run seamlessly, and only a tempo change needs a restart.
+ * Runs tile the step exactly — walking planRun from zero delivers exactly
+ * repsForStep(step) passes, which is the property the rep counter depends on.
+ */
+export function planRun(step: DrillStep, repsDone: number): DrillRun {
+  const needed = repsForStep(step);
+  const done = Math.max(0, Math.min(repsDone, needed));
+  const { tempoPct, rungIndex } = rungForRep(step, done);
+  const perRung = Math.max(1, step.repsPerRung);
+  const endsAtRep = Math.min((rungIndex + 1) * perRung, needed);
+  const passes = Math.max(1, endsAtRep - done);
+  return { tempoPct, endsAtRep, passes, loop: step.loop && passes > 1 };
+}

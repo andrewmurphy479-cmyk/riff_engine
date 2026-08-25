@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { analyzeRiff } from "../coaching";
-import { bpmForPct, buildDrill, repsForStep, rungForRep } from "../drill";
+import {
+  bpmForPct,
+  buildDrill,
+  planRun,
+  repsForStep,
+  rungForRep,
+} from "../drill";
 import { generateSafe } from "../generate";
 import { Level } from "../rhythm";
 
@@ -134,6 +140,67 @@ describe("rungForRep", () => {
   it("returns a real tempo for every rep up to the step total", () => {
     for (let rep = 0; rep <= repsForStep(step); rep++) {
       expect(step.tempoPcts).toContain(rungForRep(step, rep).tempoPct);
+    }
+  });
+});
+
+describe("planRun", () => {
+  const drill = buildDrill(generateSafe({ key: "E", level: "intermediate" }));
+
+  it("tiles a step exactly — no rep is played twice or skipped", () => {
+    for (const step of drill.steps) {
+      const tempos: number[] = [];
+      let reps = 0;
+      // Guarded so a planning bug fails the assertion rather than hanging.
+      for (let guard = 0; reps < repsForStep(step) && guard < 100; guard++) {
+        const run = planRun(step, reps);
+        expect(run.endsAtRep).toBeGreaterThan(reps);
+        for (let i = 0; i < run.passes; i++) tempos.push(run.tempoPct);
+        reps = run.endsAtRep;
+      }
+      expect(reps).toBe(repsForStep(step));
+      expect(tempos).toHaveLength(repsForStep(step));
+      // Every pass sits at the rung its rep index belongs to.
+      tempos.forEach((pct, rep) => {
+        expect(pct).toBe(rungForRep(step, rep).tempoPct);
+      });
+    }
+  });
+
+  it("gives each rung its own run, so tempo only changes at a restart", () => {
+    const build = drill.steps[1];
+    expect(planRun(build, 0)).toMatchObject({
+      tempoPct: build.tempoPcts[0],
+      endsAtRep: build.repsPerRung,
+      passes: build.repsPerRung,
+    });
+    expect(planRun(build, build.repsPerRung)).toMatchObject({
+      tempoPct: build.tempoPcts[1],
+      endsAtRep: repsForStep(build),
+    });
+  });
+
+  it("resumes mid-rung with only the passes still owed", () => {
+    const learn = drill.steps[0];
+    expect(planRun(learn, 0).passes).toBe(repsForStep(learn));
+    expect(planRun(learn, repsForStep(learn) - 1).passes).toBe(1);
+  });
+
+  it("only asks the engine to loop when the run is more than one pass", () => {
+    const play = drill.steps[2];
+    expect(planRun(play, 0)).toMatchObject({ passes: 1, loop: false });
+    // A one-pass run of a looping step must not loop either — nothing would
+    // stop it, and the drill would count reps it never asked for.
+    const learn = drill.steps[0];
+    expect(planRun(learn, repsForStep(learn) - 1).loop).toBe(false);
+    expect(planRun(learn, 0).loop).toBe(true);
+  });
+
+  it("clamps a rep count past the end instead of planning a negative run", () => {
+    for (const step of drill.steps) {
+      const over = planRun(step, repsForStep(step) + 10);
+      expect(over.passes).toBeGreaterThan(0);
+      expect(over.endsAtRep).toBe(repsForStep(step));
     }
   });
 });

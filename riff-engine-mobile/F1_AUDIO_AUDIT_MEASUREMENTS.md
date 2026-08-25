@@ -20,7 +20,7 @@ A1/A2/A7 are device-only. **A3** now self-reports — `playbackGraph.ts` logs
 | A4 | Cache memory | **Halved** — mono buffers + `StereoPannerNode`. 327 MB → 163.5 MB at 400 riffs |
 | A5 | Loop length | **Fixed** — whole-bar iterations; 100% correct across the corpus, locked by `audio/loopLength.test.ts` |
 | A6 | Timer array | **Won't fix** — measured under 50 KB, not worth the churn |
-| A7 | Bluetooth latency | **Open** — needs device measurement; the library exposes no `outputLatency`. Re-homed from F2 to land with O1 (guided drill), where the playhead becomes load-bearing |
+| A7 | Bluetooth latency | **Fixed** — the library still exposes no `outputLatency`, so it is set by ear instead of queried: `playheadOffsetMs` in Settings, checked against a four-beat loop, applied by `AudioEngine.setOutputLatency` to the visual playhead only. Rep counting and loop seams stay on the audio clock — a delayed `onIteration` could land after `onPlaybackEnd` and lose a drill's final rep |
 | A8 | Cold first-play | **Moved off the tap** — screens warm the cache on riff display |
 | A9 | Export/live divergence | **Fixed** 2026-08-20 — export renders through the live signal path; shared IR/limiter (`audio/masterChain.ts`) and shared scheduling rules (`audio/timing.ts`) |
 
@@ -198,8 +198,8 @@ An array of integers — under 50 KB even at 140 bpm. The only real cost is
 
 `AudioContext` in react-native-audio-api exposes **no `outputLatency` or
 `baseLatency`** (checked `lib/typescript/core/BaseAudioContext.d.ts` and
-`AudioContext.d.ts`). A7's Bluetooth playhead compensation would need a
-measured/hard-coded offset rather than a queryable one.
+`AudioContext.d.ts`). A7's Bluetooth playhead compensation therefore ships as a
+user-set offset rather than a queried one.
 
 Voice nodes were never disconnected after a note finished — pre-existing, but
 each voice now builds two nodes (gain + panner) instead of one, so finished

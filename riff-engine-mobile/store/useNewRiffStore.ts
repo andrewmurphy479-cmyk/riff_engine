@@ -23,6 +23,19 @@ function randomFeel(): Feel {
   return FEELS[Math.floor(Math.random() * FEELS.length)];
 }
 
+/**
+ * Bounds for the playhead offset. Zero covers built-in and wired output;
+ * Bluetooth codecs top out around a quarter second, and anything past 400ms
+ * is a misconfiguration rather than a latency.
+ */
+export const PLAYHEAD_OFFSET_MAX_MS = 400;
+export const PLAYHEAD_OFFSET_STEP_MS = 10;
+
+export function clampPlayheadOffset(ms: number): number {
+  if (!Number.isFinite(ms)) return 0;
+  return Math.min(PLAYHEAD_OFFSET_MAX_MS, Math.max(0, Math.round(ms)));
+}
+
 export type LockField = "key" | "feel";
 
 interface LockedFields {
@@ -40,6 +53,13 @@ interface NewRiffState {
   showEmbellishments: boolean;
   metronomeEnabled: boolean;
   countInEnabled: boolean;
+  /**
+   * How far behind the audio clock the sound actually reaches the player, in
+   * milliseconds (audit A7). Bluetooth adds 150-250ms; wired and built-in
+   * speakers are near zero. Shifts the visual playhead only — the library
+   * exposes no output latency to query, so this is set by ear in Settings.
+   */
+  playheadOffsetMs: number;
   lockedFields: LockedFields;
   savedRiffs: RiffSpec[];
   exploreIntroDismissed: boolean;
@@ -54,6 +74,7 @@ interface NewRiffState {
   toggleEmbellishments: () => void;
   toggleMetronome: () => void;
   toggleCountIn: () => void;
+  setPlayheadOffsetMs: (ms: number) => void;
   toggleLock: (field: LockField) => void;
   toggleSaveCurrent: () => void;
   unsaveRiff: (seed: number) => void;
@@ -72,6 +93,7 @@ export const useNewRiffStore = create<NewRiffState>()(
       showEmbellishments: true,
       metronomeEnabled: false,
       countInEnabled: false,
+      playheadOffsetMs: 0,
       lockedFields: { key: false, feel: false },
       savedRiffs: [],
       exploreIntroDismissed: false,
@@ -156,6 +178,10 @@ export const useNewRiffStore = create<NewRiffState>()(
         set({ countInEnabled: !get().countInEnabled });
       },
 
+      setPlayheadOffsetMs: (ms) => {
+        set({ playheadOffsetMs: clampPlayheadOffset(ms) });
+      },
+
       toggleLock: (field) => {
         const { lockedFields } = get();
         set({
@@ -193,10 +219,11 @@ export const useNewRiffStore = create<NewRiffState>()(
         showEmbellishments: state.showEmbellishments,
         metronomeEnabled: state.metronomeEnabled,
         countInEnabled: state.countInEnabled,
+        playheadOffsetMs: state.playheadOffsetMs,
         lockedFields: state.lockedFields,
         exploreIntroDismissed: state.exploreIntroDismissed,
       }),
-      version: 9,
+      version: 10,
       migrate: (persisted: any, version: number) => {
         if (version < 2) {
           return {
@@ -234,7 +261,15 @@ export const useNewRiffStore = create<NewRiffState>()(
           };
         }
         if (version < 9) {
-          return { ...persisted, metronomeEnabled: false, countInEnabled: false };
+          return {
+            ...persisted,
+            metronomeEnabled: false,
+            countInEnabled: false,
+            playheadOffsetMs: 0,
+          };
+        }
+        if (version < 10) {
+          return { ...persisted, playheadOffsetMs: 0 };
         }
         return persisted;
       },

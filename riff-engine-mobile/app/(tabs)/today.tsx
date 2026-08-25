@@ -11,14 +11,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useAudioEngine } from "../../audio/AudioEngine";
-import { RiffCoachingCard } from "../../components/RiffCoachingCard";
-import { RiffTabView } from "../../components/RiffTabView";
+import { DrillSheet } from "../../components/DrillSheet";
 import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { riffSpecToEvents } from "../../engine/riff/toEvents";
 import { hapticSelect, hapticSuccess, hapticTap } from "../../lib/haptics";
 import {
   effectiveStreak,
   isTodayComplete,
+  RiffResult,
   usePracticeStore,
 } from "../../store/usePracticeStore";
 import { borderRadius, colors, spacing, typography } from "../../theme/colors";
@@ -37,11 +37,12 @@ export default function TodayScreen() {
   const ensureTodaySession = usePracticeStore((s) => s.ensureTodaySession);
   const regenerateSession = usePracticeStore((s) => s.regenerateSession);
   const markRiffPracticed = usePracticeStore((s) => s.markRiffPracticed);
+  const recordDrillResult = usePracticeStore((s) => s.recordDrillResult);
   const addPracticeSeconds = usePracticeStore((s) => s.addPracticeSeconds);
 
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
-  const [activeStep, setActiveStep] = useState<number | null>(null);
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [drillIdx, setDrillIdx] = useState<number | null>(null);
+  const drillCloseRef = useRef<(() => void) | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
   const playStartRef = useRef<number | null>(null);
 
@@ -60,9 +61,7 @@ export default function TodayScreen() {
     onPlaybackEnd: () => {
       flushSeconds();
       setPlayingIdx(null);
-      setActiveStep(null);
     },
-    onStepPlay: (step) => setActiveStep(step < 0 ? null : step),
   });
 
   // Roll a fresh session over at day boundaries whenever the tab regains focus.
@@ -117,6 +116,34 @@ export default function TodayScreen() {
       markRiffPracticed(idx);
     },
     [session, markRiffPracticed],
+  );
+
+  const handleOpenDrill = useCallback(
+    (idx: number) => {
+      hapticTap();
+      audio.stop(); // the drill takes the engine over; don't leave a riff running
+      setPlayingIdx(null);
+      setDrillIdx(idx);
+    },
+    [audio],
+  );
+
+  // Fires on finish AND on abandon — a drill that recorded reps still counts,
+  // and the store merges a later attempt into it rather than replacing it.
+  const handleCloseDrill = useCallback(
+    (result: RiffResult | null) => {
+      const idx = drillIdx;
+      setDrillIdx(null);
+      if (idx == null || !result) return;
+      const doneAfter = session
+        ? session.completed.filter(Boolean).length + (session.completed[idx] ? 0 : 1)
+        : 0;
+      if (session && !session.completed[idx] && doneAfter >= session.goalCount) {
+        hapticSuccess();
+      }
+      recordDrillResult(idx, result);
+    },
+    [drillIdx, session, recordDrillResult],
   );
 
   if (!session) {
@@ -216,6 +243,7 @@ export default function TodayScreen() {
         {session.riffs.map((riff, idx) => {
           const done = session.completed[idx];
           const isPlaying = playingIdx === idx;
+          const result = session.results[idx];
           return (
             <View key={`${riff.seed}-${idx}`} style={styles.riffCard}>
               <TouchableOpacity
@@ -236,8 +264,10 @@ export default function TodayScreen() {
 
               <TouchableOpacity
                 style={styles.riffMeta}
-                onPress={() => setOpenIdx(idx)}
+                onPress={() => handleOpenDrill(idx)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Drill riff ${idx + 1}`}
               >
                 <Text style={styles.riffTitle}>Riff {idx + 1}</Text>
                 <Text style={styles.riffSub}>
@@ -247,7 +277,11 @@ export default function TodayScreen() {
                     : ""}
                   {` · ${riff.tempo_bpm} bpm`}
                 </Text>
-                <Text style={styles.riffOpenHint}>View tab ›</Text>
+                <Text style={styles.riffOpenHint}>
+                  {result && result.reps > 0
+                    ? `${result.reps} rep${result.reps === 1 ? "" : "s"} · up to ${result.topTempoPct}% · drill again ›`
+                    : "Drill this riff ›"}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -287,96 +321,21 @@ export default function TodayScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Practice sheet: full tab + playhead for the tapped riff */}
+      {/* The guided drill. Mounted only while open — it takes the engine's
+          callbacks over for its lifetime and hands them back on close. */}
       <Modal
-        visible={openIdx !== null}
+        visible={drillIdx !== null}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setOpenIdx(null)}
+        onRequestClose={() => drillCloseRef.current?.()}
       >
-        {openIdx !== null && session.riffs[openIdx] && (
-          <SafeAreaView style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <TouchableOpacity
-                onPress={() => setOpenIdx(null)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Close riff sheet"
-              >
-                <Ionicons name="close" size={24} color={colors.textPrimary} />
-              </TouchableOpacity>
-              <Text style={styles.sheetTitle}>Riff {openIdx + 1}</Text>
-              <View style={{ width: 24 }} />
-            </View>
-
-            <ScrollView
-              style={styles.sheetScroll}
-              contentContainerStyle={styles.sheetContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* What this riff asks of your hands, before the notation. */}
-              <RiffCoachingCard riff={session.riffs[openIdx]} />
-
-              <RiffTabView
-                riff={session.riffs[openIdx]}
-                activeStep={playingIdx === openIdx ? activeStep : null}
-                footer={
-                  <View style={styles.sheetControls}>
-                    <TouchableOpacity
-                      style={[
-                        styles.sheetPlayBtn,
-                        playingIdx === openIdx && styles.sheetPlayBtnActive,
-                      ]}
-                      onPress={() => handlePlay(openIdx)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons
-                        name={playingIdx === openIdx ? "stop" : "play"}
-                        size={18}
-                        color={colors.white}
-                      />
-                      <Text style={styles.sheetPlayLabel}>
-                        {playingIdx === openIdx ? "Stop" : "Play"}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.sheetDoneBtn,
-                        session.completed[openIdx] && styles.sheetDoneBtnActive,
-                      ]}
-                      onPress={() => handleMarkDone(openIdx)}
-                      disabled={session.completed[openIdx]}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons
-                        name={
-                          session.completed[openIdx]
-                            ? "checkmark-circle"
-                            : "checkmark"
-                        }
-                        size={18}
-                        color={
-                          session.completed[openIdx]
-                            ? colors.success
-                            : colors.textPrimary
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.sheetDoneLabel,
-                          session.completed[openIdx] &&
-                            styles.sheetDoneLabelActive,
-                        ]}
-                      >
-                        {session.completed[openIdx] ? "Done" : "Mark done"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                }
-              />
-            </ScrollView>
-          </SafeAreaView>
+        {drillIdx !== null && session.riffs[drillIdx] && (
+          <DrillSheet
+            riff={session.riffs[drillIdx]}
+            riffNumber={drillIdx + 1}
+            onClose={handleCloseDrill}
+            closeRef={drillCloseRef}
+          />
         )}
       </Modal>
     </SafeAreaView>
@@ -526,67 +485,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: "600",
   },
-  sheet: { flex: 1, backgroundColor: colors.background },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  sheetTitle: {
-    ...typography.h3,
-    color: colors.textPrimary,
-  },
-  sheetScroll: { flex: 1 },
-  sheetContent: { paddingVertical: spacing.md },
-  sheetControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
-  },
-  sheetPlayBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.accent,
-  },
-  sheetPlayBtnActive: { backgroundColor: colors.error },
-  sheetPlayLabel: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  sheetDoneBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  sheetDoneBtnActive: {
-    borderColor: "rgba(34, 197, 94, 0.4)",
-    backgroundColor: "rgba(34, 197, 94, 0.08)",
-  },
-  sheetDoneLabel: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  sheetDoneLabelActive: { color: colors.success },
   doneBtn: { padding: spacing.xs },
   doneBtnActive: {},
   regenBtn: {
