@@ -85,12 +85,48 @@ export interface PracticeProfile {
   preferredFeel: Feel | null;
 }
 
+/**
+ * What a drill observed for one riff.
+ *
+ * The app cannot hear the player, so nothing here is a measure of *accuracy* —
+ * only of what happened: how fast they took it, how many times round, which
+ * bars they looped. Read it as effort and reach, never as correctness.
+ *
+ * Recorded alongside the riff's own identifying features (rhythm, techniques)
+ * so a later skill model can ask "how do palm-mute riffs go for this player?"
+ * without needing the RiffSpec, which is heavy and may not survive an engine
+ * shape change.
+ */
+export interface RiffResult {
+  /** The riff's seed, to tie a result back to a specific riff. */
+  seed: number;
+  rhythm: string | null;
+  /** Distinct techniques present, e.g. ["mute", "hammer"]. */
+  techniques: string[];
+  /** Fastest rung reached, as a percentage of the riff's own tempo. */
+  topTempoPct: number;
+  /** Loop iterations played across the whole drill. */
+  reps: number;
+  /** Bar indices looped in the learn step. */
+  barsLooped: number[];
+  /** Seconds of audio actually played for this riff. */
+  seconds: number;
+  /** Whether the drill was finished rather than abandoned. */
+  completed: boolean;
+}
+
 export interface DailySession {
   date: string; // dayKey when built
   /** What today drills. Determined by the date, so a re-roll keeps it. */
   theme: SessionTheme;
   riffs: RiffSpec[];
   completed: boolean[];
+  /**
+   * Per-riff drill outcomes, index-aligned with `riffs`. Null until a riff has
+   * been worked. Kept separate from `completed` because a riff can be drilled
+   * without being finished, and finished without being drilled (skip-all).
+   */
+  results: (RiffResult | null)[];
   goalCount: number; // riffs needed to "complete" the day
   credited: boolean; // whether this day has been counted toward streak/stats
 }
@@ -154,6 +190,9 @@ export function isValidSession(session: unknown): session is DailySession {
   }
   if (!Array.isArray(s.riffs) || s.riffs.length === 0) return false;
   if (s.completed.length !== s.riffs.length) return false;
+  if (!Array.isArray(s.results) || s.results.length !== s.riffs.length) {
+    return false;
+  }
   return s.riffs.every((riff) => {
     if (typeof riff !== "object" || riff === null) return false;
     const r = riff as Record<string, unknown>;
@@ -193,6 +232,12 @@ interface PracticeState {
   regenerateSession: () => void;
   /** Mark one riff in today's session as practiced; credits the day if goal met. */
   markRiffPracticed: (index: number) => void;
+  /**
+   * Record what a drill observed for a riff, and mark it practiced. Merges
+   * into any existing result so an abandoned-then-resumed drill keeps its best
+   * tempo and accumulated reps rather than starting over.
+   */
+  recordDrillResult: (index: number, result: RiffResult) => void;
   addPracticeSeconds: (seconds: number) => void;
 }
 
@@ -220,8 +265,71 @@ function buildSession(profile: PracticeProfile): DailySession {
     theme: plan.theme,
     riffs,
     completed: riffs.map(() => false),
+    results: riffs.map(() => null),
     goalCount: SESSION_RIFF_COUNT,
     credited: false,
+  };
+}
+
+/**
+ * Mark a riff practiced and credit the day if that met the goal.
+ *
+ * Returns the state slice to apply, or null when there is nothing to do (no
+ * session, bad index, or already practiced). Shared so that finishing a drill
+ * and tapping "mark done" cannot drift apart — they are the same event as far
+ * as the streak is concerned.
+ */
+function creditRiff(
+  state: PracticeState,
+  index: number,
+): Partial<PracticeState> | null {
+  const { session, stats, streak } = state;
+  if (!session) return null;
+  if (index < 0 || index >= session.completed.length) return null;
+  if (session.completed[index]) return null; // already done
+
+  const completed = session.completed.slice();
+  completed[index] = true;
+  const doneCount = completed.filter(Boolean).length;
+
+  let nextStats = { ...stats, totalRiffs: stats.totalRiffs + 1 };
+  let nextStreak = streak;
+  let credited = session.credited;
+
+  // Credit the day the first time the goal is reached.
+  if (!credited && doneCount >= session.goalCount) {
+    credited = true;
+    const today = dayKey();
+    const last = streak.lastCompletedDate;
+    const gap = last ? daysBetween(last, today) : null;
+    const current = gap === 1 ? streak.current + 1 : 1;
+    nextStreak = {
+      current,
+      longest: Math.max(streak.longest, current),
+      lastCompletedDate: today,
+    };
+    nextStats = { ...nextStats, daysPracticed: nextStats.daysPracticed + 1 };
+  }
+
+  return {
+    session: { ...session, completed, credited },
+    stats: nextStats,
+    streak: nextStreak,
+  };
+}
+
+/** Union of two attempts at the same riff: best tempo, summed effort. */
+function mergeResults(prev: RiffResult | null, next: RiffResult): RiffResult {
+  if (!prev) return next;
+  return {
+    ...next,
+    topTempoPct: Math.max(prev.topTempoPct, next.topTempoPct),
+    reps: prev.reps + next.reps,
+    seconds: prev.seconds + next.seconds,
+    barsLooped: [...new Set([...prev.barsLooped, ...next.barsLooped])].sort(
+      (a, b) => a - b,
+    ),
+    completed: prev.completed || next.completed,
   };
 }
 
@@ -280,39 +388,24 @@ export const usePracticeStore = create<PracticeState>()(
       },
 
       markRiffPracticed: (index) => {
-        const { session, stats, streak } = get();
+        const next = creditRiff(get(), index);
+        if (next) set(next);
+      },
+
+      recordDrillResult: (index, result) => {
+        const state = get();
+        const { session } = state;
         if (!session) return;
-        if (index < 0 || index >= session.completed.length) return;
-        if (session.completed[index]) return; // already done
+        if (index < 0 || index >= session.riffs.length) return;
 
-        const completed = session.completed.slice();
-        completed[index] = true;
-        const doneCount = completed.filter(Boolean).length;
+        // Fold the result in first, then credit — crediting reads `completed`,
+        // and a drill both records and completes in one action.
+        const results = session.results.slice();
+        results[index] = mergeResults(results[index] ?? null, result);
+        const withResult = { ...state, session: { ...session, results } };
 
-        let nextStats = { ...stats, totalRiffs: stats.totalRiffs + 1 };
-        let nextStreak = streak;
-        let credited = session.credited;
-
-        // Credit the day the first time the goal is reached.
-        if (!credited && doneCount >= session.goalCount) {
-          credited = true;
-          const today = dayKey();
-          const last = streak.lastCompletedDate;
-          const gap = last ? daysBetween(last, today) : null;
-          const current = gap === 1 ? streak.current + 1 : 1;
-          nextStreak = {
-            current,
-            longest: Math.max(streak.longest, current),
-            lastCompletedDate: today,
-          };
-          nextStats = { ...nextStats, daysPracticed: nextStats.daysPracticed + 1 };
-        }
-
-        set({
-          session: { ...session, completed, credited },
-          stats: nextStats,
-          streak: nextStreak,
-        });
+        const credited = creditRiff(withResult, index);
+        set(credited ?? { session: withResult.session });
       },
 
       addPracticeSeconds: (seconds) => {
@@ -331,9 +424,25 @@ export const usePracticeStore = create<PracticeState>()(
         streak: state.streak,
         stats: state.stats,
       }),
-      version: 3,
+      version: 4,
       migrate: (persisted: any, version: number) => {
         let next = persisted;
+
+        // v4: sessions carry per-riff drill results. Backfill nulls onto an
+        // existing session rather than dropping it — same reasoning as v3, and
+        // a null result just means "not drilled yet", which is true.
+        if (version < 4 && next?.session?.riffs) {
+          const riffs = next.session.riffs;
+          if (!Array.isArray(next.session.results)) {
+            next = {
+              ...next,
+              session: {
+                ...next.session,
+                results: Array.isArray(riffs) ? riffs.map(() => null) : [],
+              },
+            };
+          }
+        }
 
         // v3: sessions carry a theme. Backfill the unthemed descriptor onto an
         // otherwise-good session rather than dropping it — this runs mid-day for
