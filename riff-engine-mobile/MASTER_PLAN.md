@@ -236,7 +236,9 @@ Software Mansion's [react-native-audio-api](https://docs.swmansion.com/react-nat
 
 *Owner verdict: generator + streak alone isn't a subscription. Scope this phase properly at sprint start — but ranked candidates, strongest evidence first:*
 
-### Sprint 6 — the teaching slice
+### Sprint 6 — the teaching slice — **CLOSED 2026-08-28**
+
+*All four pieces shipped and play-tested on device (O3 `206368a`, A9 + O2 `ac8211a`, O1 + A7 `1a0a3cc`). Today now teaches: the day drills one theme, each riff explains what it asks of your hands, and practising it is a guided drill that records tempo and reps instead of a checkbox.*
 
 The diagnosis going in: **the app had teaching content but no teaching structure.** `display.ts` holds genuinely good writing (the rhythm descriptions are the best copy in the app) but it lived only in Explore, the tab a habit user opens least. Today — where the habit actually happens — taught nothing: four unrelated riffs and a checkbox. Nothing sequenced, nothing adapted, and "mark done" recorded a single self-reported bit.
 
