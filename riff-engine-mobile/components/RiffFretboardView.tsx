@@ -47,6 +47,44 @@ const PITCH_CLASSES = [
 
 const pitchClassName = (midi: number) => PITCH_CLASSES[midi % 12];
 
+// Sequence path geometry: arcs stop just outside the played-note dot (r=13
+// when active) so the arrowhead is never hidden under it.
+const PATH_DOT_CLEARANCE = 15;
+const ARROW_LENGTH = 6;
+const ARROW_HALF_WIDTH = 3.5;
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** The point `dist` along the straight line from `from` toward `to`. */
+function towards(from: Point, to: Point, dist: number): Point {
+  const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  return {
+    x: from.x + ((to.x - from.x) / len) * dist,
+    y: from.y + ((to.y - from.y) / len) * dist,
+  };
+}
+
+/**
+ * Badge label for the ordinals a position plays on, with runs of three or
+ * more collapsed so a pedal tone reads "1–9" rather than "1,2,3,…,9".
+ */
+function formatOrdinals(ordinals: number[]): string {
+  const sorted = [...ordinals].sort((a, b) => a - b);
+  const parts: string[] = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    if (j - i >= 2) parts.push(`${sorted[i]}–${sorted[j]}`);
+    else for (let k = i; k <= j; k++) parts.push(String(sorted[k]));
+    i = j + 1;
+  }
+  return parts.join(",");
+}
+
 interface ScalePosition {
   stringIdx: number;
   fret: number;
@@ -326,28 +364,83 @@ export function RiffFretboardView({
     return map;
   }, [bar, maxFret]);
 
-  // One anchor point per step (centroid of its notes) for the path line.
-  const pathAnchors = useMemo(() => {
-    const byStep = new Map<number, { sx: number; sy: number; count: number }>();
+  // One arc per move between consecutive steps. Each arc joins the nearest
+  // pair of notes (so chords connect at a real dot rather than a centroid),
+  // is trimmed to the dot edges, and bows to the left of travel so a move and
+  // its return trace two separate arcs instead of overlapping.
+  const pathSegments = useMemo(() => {
+    const byStep = new Map<number, Point[]>();
     for (const n of bar.notes) {
       if (n.fret > maxFret) continue;
-      const entry = byStep.get(n.step) ?? { sx: 0, sy: 0, count: 0 };
-      entry.sx += stringX(n.string);
-      entry.sy += fretY(n.fret);
-      entry.count += 1;
-      byStep.set(n.step, entry);
+      const pts = byStep.get(n.step) ?? [];
+      pts.push({ x: stringX(n.string), y: fretY(n.fret) });
+      byStep.set(n.step, pts);
     }
-    return Array.from(byStep.entries())
+    const groups = Array.from(byStep.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([, v]) => ({ x: v.sx / v.count, y: v.sy / v.count }));
+      .map(([, pts]) => pts);
+
+    const segments: { d: string; arrow: string }[] = [];
+    for (let i = 1; i < groups.length; i++) {
+      let from = groups[i - 1][0];
+      let to = groups[i][0];
+      let dist = Infinity;
+      for (const a of groups[i - 1]) {
+        for (const b of groups[i]) {
+          const d = Math.hypot(b.x - a.x, b.y - a.y);
+          if (d < dist) {
+            dist = d;
+            from = a;
+            to = b;
+          }
+        }
+      }
+      // Repeated note — no movement to draw.
+      if (dist < 1) continue;
+
+      const ux = (to.x - from.x) / dist;
+      const uy = (to.y - from.y) / dist;
+      const bow = Math.min(40, Math.max(12, dist * 0.35));
+      const ctrl = {
+        x: (from.x + to.x) / 2 + uy * bow,
+        y: (from.y + to.y) / 2 - ux * bow,
+      };
+      const start = towards(from, ctrl, PATH_DOT_CLEARANCE);
+      const tip = towards(to, ctrl, PATH_DOT_CLEARANCE);
+      const end = towards(to, ctrl, PATH_DOT_CLEARANCE + ARROW_LENGTH);
+      const tx = tip.x - end.x;
+      const ty = tip.y - end.y;
+      const tl = Math.hypot(tx, ty) || 1;
+      const px = (-ty / tl) * ARROW_HALF_WIDTH;
+      const py = (tx / tl) * ARROW_HALF_WIDTH;
+      segments.push({
+        d: `M ${start.x} ${start.y} Q ${ctrl.x} ${ctrl.y} ${end.x} ${end.y}`,
+        arrow: `M ${tip.x} ${tip.y} L ${end.x + px} ${end.y + py} L ${end.x - px} ${end.y - py} Z`,
+      });
+    }
+    return segments;
   }, [bar, maxFret]);
 
-  const pathD = useMemo(() => {
-    if (pathAnchors.length < 2) return null;
-    return pathAnchors
-      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
-      .join(" ");
-  }, [pathAnchors]);
+  // Sequence badges, one per fretted position. A repeated note lists every
+  // ordinal it plays on ("2,5") instead of stacking badges on the same spot.
+  const sequenceBadges = useMemo(() => {
+    const byPos = new Map<string, { string: number; fret: number; ordinals: number[] }>();
+    for (const n of bar.notes) {
+      if (n.fret > maxFret) continue;
+      const ordinal = stepOrdinals.get(n.step);
+      if (ordinal == null) continue;
+      const key = `${n.string}-${n.fret}`;
+      const entry = byPos.get(key) ?? { string: n.string, fret: n.fret, ordinals: [] };
+      if (!entry.ordinals.includes(ordinal)) entry.ordinals.push(ordinal);
+      byPos.set(key, entry);
+    }
+    return Array.from(byPos.entries()).map(([key, v]) => ({
+      key,
+      x: stringX(v.string) + 11,
+      y: fretY(v.fret) - 11,
+      label: formatOrdinals(v.ordinals),
+    }));
+  }, [bar, maxFret, stepOrdinals]);
 
   return (
     <View style={styles.container}>
@@ -385,17 +478,21 @@ export function RiffFretboardView({
             </G>
           )}
 
-          {/* Sequence path — dashed line through step anchors in play order */}
-          {showSequence && pathD && (
-            <Path
-              d={pathD}
-              fill="none"
-              stroke={analog.ink}
-              strokeWidth={1.4}
-              strokeDasharray="4 4"
-              strokeLinecap="round"
-            />
-          )}
+          {/* Sequence path — dashed arrows from note to note in play order */}
+          {showSequence &&
+            pathSegments.map((seg, i) => (
+              <G key={`path-${i}`}>
+                <Path
+                  d={seg.d}
+                  fill="none"
+                  stroke={analog.ink}
+                  strokeWidth={1.4}
+                  strokeDasharray="4 3"
+                  strokeLinecap="round"
+                />
+                <Path d={seg.arrow} fill={analog.ink} />
+              </G>
+            ))}
 
           {/* Played notes — role-colored with glow + white ring */}
           {bar.notes.map((note, i) => {
@@ -446,31 +543,31 @@ export function RiffFretboardView({
 
           {/* Sequence badges — ordinal of each step, shared across chord notes */}
           {showSequence &&
-            bar.notes.map((note, i) => {
-              if (note.fret > maxFret) return null;
-              const ordinal = stepOrdinals.get(note.step);
-              if (ordinal == null) return null;
-              const cx = stringX(note.string) + 11;
-              const cy = fretY(note.fret) - 11;
+            sequenceBadges.map(({ key, x, y, label }) => {
+              // Pill grows rightward from the single-digit circle's position.
+              const width = Math.max(14, label.length * 5.5 + 6);
               return (
-                <G key={`seq-${i}`}>
-                  <Circle
-                    cx={cx}
-                    cy={cy}
-                    r={7}
+                <G key={`seq-${key}`}>
+                  <Rect
+                    x={x - 7}
+                    y={y - 7}
+                    width={width}
+                    height={14}
+                    rx={7}
+                    ry={7}
                     fill="#FFFFFF"
                     stroke="rgba(0,0,0,0.6)"
                     strokeWidth={0.8}
                   />
                   <SvgText
-                    x={cx}
-                    y={cy + 3}
+                    x={x - 7 + width / 2}
+                    y={y + 3}
                     fill="#0B0B0F"
                     fontSize={9}
                     fontWeight="800"
                     textAnchor="middle"
                   >
-                    {ordinal}
+                    {label}
                   </SvgText>
                 </G>
               );
