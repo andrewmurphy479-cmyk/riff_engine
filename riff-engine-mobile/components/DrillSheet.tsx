@@ -25,8 +25,17 @@ import { hapticSelect } from "../lib/haptics";
 import { Observed, useDrillRunner } from "../lib/useDrillRunner";
 import { useNewRiffStore } from "../store/useNewRiffStore";
 import { RiffResult } from "../store/usePracticeStore";
-import { borderRadius, colors, spacing, typography } from "../theme/colors";
+import { borderRadius, spacing, typography } from "../theme/colors";
+import { analog } from "../theme/analog";
+import { BrandWordmark } from "./BrandWordmark";
 import { RiffTabView } from "./RiffTabView";
+
+const colors = {
+  background: analog.paper, textPrimary: analog.ink, textSecondary: analog.muted,
+  textMuted: analog.muted, accent: analog.oxblood, white: analog.paper,
+  border: analog.line, chipInactive: analog.inset, success: analog.success,
+  card: analog.paper, error: analog.indigo,
+};
 
 interface Props {
   riff: RiffSpec;
@@ -68,6 +77,7 @@ export function DrillSheet({ riff, riffNumber, onClose, closeRef }: Props) {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <TouchableOpacity
+          style={styles.headerAction}
           onPress={handleClose}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -76,8 +86,12 @@ export function DrillSheet({ riff, riffNumber, onClose, closeRef }: Props) {
         >
           <Ionicons name="close" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Riff {riffNumber}</Text>
+        <View style={styles.headerBrand}>
+          <BrandWordmark width={114} />
+          <Text style={styles.headerTitle}>Practice / Riff {riffNumber}</Text>
+        </View>
         <TouchableOpacity
+          style={styles.headerAction}
           onPress={() => {
             hapticSelect();
             toggleMetronome();
@@ -149,7 +163,7 @@ export function DrillSheet({ riff, riffNumber, onClose, closeRef }: Props) {
         ) : (
           <View style={styles.stepCard}>
             <Text style={styles.stepKicker}>
-              {step.label.toUpperCase()} · STEP {stepIndex + 1} OF{" "}
+              {step.label} / Step {stepIndex + 1} of{" "}
               {drill.steps.length}
             </Text>
             <Text style={styles.stepTitle}>{step.title}</Text>
@@ -182,6 +196,7 @@ export function DrillSheet({ riff, riffNumber, onClose, closeRef }: Props) {
         )}
 
         <RiffTabView
+          appearance="analog"
           riff={riff}
           activeStep={runner.activeStep}
           footer={
@@ -240,7 +255,7 @@ export function DrillSheet({ riff, riffNumber, onClose, closeRef }: Props) {
                 ? "Stop"
                 : runner.repsInStep > 0
                   ? "Resume"
-                  : "Start"}
+                  : "Play this step"}
             </Text>
           </TouchableOpacity>
         )}
@@ -304,6 +319,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   headerTitle: { ...typography.h3, color: colors.textPrimary },
+  headerAction: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  headerBrand: { alignItems: "center" },
 
   stepper: {
     flexDirection: "row",
@@ -345,13 +362,13 @@ const styles = StyleSheet.create({
   stepperLabelCurrent: { color: colors.textPrimary, fontWeight: "700" },
 
   scroll: { flex: 1 },
-  content: { paddingVertical: spacing.md, gap: spacing.md },
+  content: { paddingVertical: spacing.md, gap: spacing.md, width: "100%", maxWidth: 620, alignSelf: "center" },
 
   stepCard: {
     marginHorizontal: spacing.lg,
     padding: spacing.lg,
     borderRadius: borderRadius.lg,
-    backgroundColor: colors.card,
+    backgroundColor: analog.butter,
     borderWidth: 1,
     borderColor: colors.border,
     gap: 6,
@@ -359,10 +376,10 @@ const styles = StyleSheet.create({
   stepKicker: {
     ...typography.small,
     color: colors.accent,
-    letterSpacing: 1.2,
+    letterSpacing: 0,
     fontWeight: "700",
   },
-  stepTitle: { ...typography.h2, color: colors.textPrimary },
+  stepTitle: { ...typography.h2, fontFamily: analog.headingFont, fontSize: 27, lineHeight: 34, color: analog.oxblood },
   stepInstruction: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -400,7 +417,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: "rgba(74, 122, 255, 0.25)",
+    borderColor: analog.line,
     alignItems: "center",
     gap: spacing.sm,
   },
@@ -423,6 +440,9 @@ const styles = StyleSheet.create({
   },
 
   controls: {
+    width: "100%",
+    maxWidth: 620,
+    alignSelf: "center",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
@@ -431,6 +451,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   primaryBtn: {
+    minHeight: 50,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -446,6 +467,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.3,
   },
-  skipBtn: { alignItems: "center", paddingVertical: spacing.sm },
+  skipBtn: { alignItems: "center", justifyContent: "center", minHeight: 44, paddingVertical: spacing.sm },
   skipLabel: { ...typography.caption, color: colors.textSecondary },
 });

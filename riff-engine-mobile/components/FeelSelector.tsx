@@ -39,7 +39,7 @@ export function FeelSelector({ value, locked, onChange, onToggleLock }: Props) {
           size={11}
           color={locked ? colors.accent : colors.textMuted}
         />
-        <Text style={[styles.label, locked && styles.labelLocked]}>FEEL</Text>
+        <Text style={[styles.label, locked && styles.labelLocked]}>Feel</Text>
       </TouchableOpacity>
       <View style={styles.chips}>
         {FEELS.map((f) => {
@@ -80,13 +80,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    minWidth: 44,
+    minWidth: 48,
   },
   label: {
     color: colors.textMuted,
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 0.8,
+    letterSpacing: 0,
   },
   labelLocked: {
     color: colors.accent,
@@ -98,8 +98,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 10,
     borderRadius: borderRadius.full,
     backgroundColor: colors.chipInactive,
     borderWidth: 1,
@@ -116,6 +118,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   chipLabelActive: {
-    color: colors.textPrimary,
+    color: colors.accent,
   },
 });

@@ -62,7 +62,7 @@ export function TempoStepper({
                   metronomeEnabled && styles.clickLabelActive,
                 ]}
               >
-                click
+                Click
               </Text>
             </TouchableOpacity>
           )}
@@ -84,7 +84,7 @@ export function TempoStepper({
                   countInEnabled && styles.clickLabelActive,
                 ]}
               >
-                count-in
+                Count-in
               </Text>
             </TouchableOpacity>
           )}
@@ -131,7 +131,7 @@ export function TempoStepper({
           accessibilityRole="button"
           accessibilityLabel="Reset tempo to the riff's default"
         >
-          <Text style={styles.resetLabel}>reset</Text>
+          <Text style={styles.resetLabel}>Reset</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -140,20 +140,24 @@ export function TempoStepper({
 
 const styles = StyleSheet.create({
   row: {
+    width: "100%",
+    maxWidth: 620,
+    alignSelf: "center",
+    minHeight: 60,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 14,
+    gap: 6,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   stepButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.chipInactive,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -161,7 +165,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "baseline",
     gap: 4,
-    minWidth: 76,
+    minWidth: 66,
     justifyContent: "center",
   },
   value: {
@@ -180,20 +184,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   resetButton: {
-    position: "absolute",
-    right: spacing.lg,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: "center",
   },
   clickCluster: {
-    position: "absolute",
-    left: spacing.lg,
-    gap: 6,
+    marginRight: "auto",
+    gap: 4,
   },
   clickLabel: {
+    minHeight: 24,
+    textAlignVertical: "center",
     color: colors.textMuted,
     fontSize: 10,
     fontWeight: "600",
     letterSpacing: 0.4,
-    textTransform: "uppercase",
+    textTransform: "none",
   },
   clickLabelActive: {
     color: colors.accent,
@@ -203,6 +209,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "600",
     letterSpacing: 0.4,
-    textTransform: "uppercase",
+    textTransform: "none",
   },
 });

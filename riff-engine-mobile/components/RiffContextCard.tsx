@@ -12,7 +12,6 @@ import {
 import {
   PHRASE_NARRATIVES,
   RHYTHM_DESCRIPTIONS,
-  ROLE_COLORS,
   ROLE_NARRATIVES,
   ROLE_ORDER,
   SCALE_DESCRIPTIONS,
@@ -21,6 +20,7 @@ import { midiAt } from "../engine/riff/fretboard";
 import { roleOf } from "../engine/riff/scale";
 import { RiffSpec } from "../engine/riff/spec";
 import { colors, spacing } from "../theme/colors";
+import { analog } from "../theme/analog";
 
 if (
   Platform.OS === "android" &&
@@ -89,7 +89,7 @@ export function RiffContextCard({ riff, currentBarIndex }: Props) {
                 <View
                   style={[
                     styles.roleDot,
-                    { backgroundColor: ROLE_COLORS[role] },
+                    { backgroundColor: analog.roleColors[role] },
                   ]}
                 />
                 <Text style={styles.roleLabel}>{role}</Text>
@@ -125,8 +125,11 @@ function Section({
         style={styles.sectionHeader}
         onPress={toggle}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: open }}
       >
-        <Text style={styles.sectionTitle}>{title.toUpperCase()}</Text>
+        <Text style={styles.sectionTitle}>{title}</Text>
         <Ionicons
           name={open ? "chevron-up" : "chevron-down"}
           size={14}
@@ -146,25 +149,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardSolid,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: colors.border,
     gap: spacing.md,
   },
   section: {
     gap: 6,
   },
   sectionHeader: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   sectionTitle: {
-    color: colors.accent,
-    fontSize: 10,
+    color: analog.indigo,
+    fontSize: 15,
     fontWeight: "700",
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   body: {
-    color: "rgba(255,255,255,0.82)",
+    color: colors.textPrimary,
     fontSize: 13,
     lineHeight: 19,
   },
@@ -188,7 +192,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   roleLabel: {
-    color: "rgba(255,255,255,0.85)",
+    color: colors.textPrimary,
     fontSize: 12,
     fontWeight: "700",
     fontFamily: "monospace",
@@ -197,7 +201,7 @@ const styles = StyleSheet.create({
   },
   roleBody: {
     flex: 1,
-    color: "rgba(255,255,255,0.7)",
+    color: colors.textSecondary,
     fontSize: 12,
     lineHeight: 17,
   },

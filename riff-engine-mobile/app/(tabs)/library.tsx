@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -16,7 +17,9 @@ import {
 import { AudioEngine, useAudioEngine } from "../../audio/AudioEngine";
 import { AudioExporter } from "../../audio/AudioExporter";
 import { RiffTabView } from "../../components/RiffTabView";
-import { PHRASE_LABELS } from "../../engine/riff/display";
+import { FEEL_DISPLAY_NAMES, PHRASE_LABELS } from "../../engine/riff/display";
+import { ScreenHeading } from "../../components/ScreenHeading";
+import { analog } from "../../theme/analog";
 import { RiffSpec } from "../../engine/riff/spec";
 import { riffSpecToEvents, stripTechniques } from "../../engine/riff/toEvents";
 import { hapticTap } from "../../lib/haptics";
@@ -49,15 +52,16 @@ export default function LibraryScreen() {
   if (savedRiffs.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Library</Text>
-        </View>
+        <ScreenHeading title="Library" subtitle="Keep the phrases worth coming back to." />
         <View style={styles.emptyState}>
-          <Ionicons name="heart-outline" size={56} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>No saved riffs yet</Text>
+          <View style={styles.emptyArt}><Ionicons name="albums-outline" size={52} color={colors.accent} /></View>
+          <Text style={styles.emptyTitle}>Start your collection</Text>
           <Text style={styles.emptySubtitle}>
             Tap the heart on the Create tab to save a riff you like.
           </Text>
+          <TouchableOpacity style={styles.createButton} onPress={() => router.push("/")} accessibilityRole="button" accessibilityLabel="Create a riff">
+            <Text style={styles.createButtonLabel}>Find a riff to keep</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -65,12 +69,7 @@ export default function LibraryScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Library</Text>
-        <Text style={styles.headerCount}>
-          {savedRiffs.length} {savedRiffs.length === 1 ? "riff" : "riffs"}
-        </Text>
-      </View>
+      <ScreenHeading title="Library" subtitle={`${savedRiffs.length} ${savedRiffs.length === 1 ? "riff" : "riffs"} to come back to. Make one your own.`} />
 
       <FlatList
         data={savedRiffs}
@@ -116,20 +115,22 @@ function SavedRiffRow({ riff, onPress }: RowProps) {
       style={styles.row}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`Open saved riff in ${riff.key}, ${riff.tempo_bpm} BPM`}
     >
+      <View style={styles.recordLabel}><Text style={styles.recordKey}>{riff.key}</Text><Ionicons name="musical-note" size={18} color={analog.oxblood} /></View>
       <View style={styles.rowLeft}>
         <Text style={styles.rowTitle}>
           {riff.key} {scalePretty}
         </Text>
         <Text style={styles.rowSub}>
           {riff.tempo_bpm} BPM
-          {riff.feel ? ` · ${riff.feel}` : ""}
-          {riff.rhythm_name ? ` · ${riff.rhythm_name}` : ""}
+          {riff.feel ? ` / ${FEEL_DISPLAY_NAMES[riff.feel] ?? riff.feel.replace(/_/g, " ")}` : ""}
         </Text>
       </View>
       <View style={styles.rowRight}>
         <Text style={styles.rowPhrase}>{phraseTags.join(" ")}</Text>
-        <Text style={styles.rowSeed}>seed {riff.seed}</Text>
+        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
       </View>
     </TouchableOpacity>
   );
@@ -217,6 +218,7 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
     <SafeAreaView style={styles.sheet}>
       <View style={styles.sheetHeader}>
         <TouchableOpacity
+          style={styles.closeButton}
           onPress={onClose}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -225,8 +227,8 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
         >
           <Ionicons name="close" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.sheetTitle}>Saved Riff</Text>
-        <View style={{ width: 24 }} />
+        <Text style={styles.sheetTitle}>From your collection</Text>
+        <View style={{ width: 44 }} />
       </View>
 
       <ScrollView
@@ -245,11 +247,13 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
                 style={styles.playButton}
                 onPress={handlePlayToggle}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={isPlaying ? "Stop saved riff" : "Play saved riff"}
               >
                 <Ionicons
                   name={isPlaying ? "stop" : "play"}
                   size={14}
-                  color={colors.accent}
+                  color={colors.white}
                 />
                 <Text style={styles.playLabel}>
                   {isPlaying ? "Stop" : "Play"}
@@ -260,6 +264,8 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
                 onPress={handleShare}
                 disabled={isSharing}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Share saved riff"
               >
                 {isSharing ? (
                   <ActivityIndicator size="small" color={colors.accent} />
@@ -276,6 +282,8 @@ function DetailSheet({ riff, onClose, onRemove }: SheetProps) {
                 style={styles.removeButton}
                 onPress={onRemove}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Remove saved riff"
               >
                 <Ionicons name="trash-outline" size={16} color={colors.heart} />
                 <Text style={styles.removeLabel}>Remove</Text>
@@ -293,31 +301,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  headerTitle: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 2,
-  },
-  headerCount: {
-    marginLeft: spacing.sm,
-    color: colors.textMuted,
-    fontSize: 11,
-    fontFamily: "monospace",
-  },
   listContent: {
+    width: "100%",
+    maxWidth: 740,
+    alignSelf: "center",
     paddingVertical: spacing.sm,
   },
   separator: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: colors.border,
     marginHorizontal: spacing.lg,
   },
   row: {
@@ -325,22 +317,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    gap: spacing.md,
+    gap: 12,
   },
   rowLeft: {
     flex: 1,
   },
   rowTitle: {
-    color: colors.white,
-    fontSize: 15,
+    color: colors.textPrimary,
+    fontSize: 16,
     fontWeight: "700",
-    textTransform: "lowercase",
     marginBottom: 3,
   },
   rowSub: {
-    color: "rgba(255,255,255,0.55)",
-    fontSize: 11,
-    fontFamily: "monospace",
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
   },
   rowRight: {
     alignItems: "flex-end",
@@ -353,11 +344,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 3,
   },
-  rowSeed: {
-    color: colors.textMuted,
-    fontSize: 10,
-    fontFamily: "monospace",
-  },
+  recordLabel: { width: 50, minHeight: 68, borderRadius: 10, backgroundColor: analog.butter, alignItems: "center", justifyContent: "center", gap: 5 },
+  recordKey: { fontFamily: analog.headingFont, fontSize: 23, fontWeight: "700", color: analog.oxblood },
+  emptyArt: { width: 112, height: 112, borderRadius: 28, backgroundColor: analog.butter, alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  createButton: { borderRadius: 28, backgroundColor: analog.oxblood, paddingVertical: 15, paddingHorizontal: 24, marginTop: 8 },
+  createButtonLabel: { color: analog.paper, fontSize: 15, fontWeight: "600" },
   emptyState: {
     flex: 1,
     alignItems: "center",
@@ -366,12 +357,15 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontFamily: analog.headingFont,
+    fontSize: 27,
     fontWeight: "600",
     color: colors.textPrimary,
   },
   emptySubtitle: {
     fontSize: 14,
+    lineHeight: 21,
+    maxWidth: 280,
     color: colors.textSecondary,
     textAlign: "center",
   },
@@ -389,53 +383,61 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   sheetTitle: {
-    color: colors.textPrimary,
-    fontSize: 14,
+    color: colors.accent,
+    fontFamily: analog.headingFont,
+    fontSize: 20,
     fontWeight: "700",
-    letterSpacing: 1.5,
+    flexShrink: 1,
   },
   sheetScroll: {
     flex: 1,
   },
   sheetContent: {
+    width: "100%",
+    maxWidth: 740,
+    alignSelf: "center",
     paddingVertical: spacing.md,
   },
   sheetControls: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 18,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
+    borderTopColor: colors.border,
   },
   playButton: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: "rgba(74, 122, 255, 0.18)",
+    backgroundColor: colors.accent,
     borderWidth: 1,
-    borderColor: "rgba(74, 122, 255, 0.35)",
+    borderColor: colors.accent,
   },
   playLabel: {
-    color: colors.textPrimary,
+    color: colors.white,
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.3,
   },
   shareButton: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: borderRadius.sm,
-    backgroundColor: "rgba(74, 122, 255, 0.1)",
+    backgroundColor: colors.chipInactive,
     borderWidth: 1,
-    borderColor: "rgba(74, 122, 255, 0.3)",
+    borderColor: colors.border,
   },
   shareLabel: {
     color: colors.accent,
@@ -443,6 +445,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   removeButton: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -458,4 +461,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  closeButton: { width: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
 });

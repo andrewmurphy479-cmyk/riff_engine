@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AudioEngine } from '../audio/AudioEngine';
 import { colors } from '../theme/colors';
 import RiffologyLoadingScreen from '../components/RiffologyLoadingScreen';
+import { initMonetizationOnce } from '../lib/useAds';
 import { useNewRiffStore } from '../store/useNewRiffStore';
 import { usePracticeStore } from '../store/usePracticeStore';
 
@@ -34,12 +35,18 @@ export default function RootLayout() {
     AudioEngine.setOutputLatency(playheadOffsetMs);
   }, [playheadOffsetMs]);
 
-  // Hold the splash until both the intro timer and store hydration are done,
-  // so returning users never flash the onboarding screen.
-  if (isLoading || !hydrated) {
+  // Ads and the store start after onboarding, so the consent form and the iOS
+  // tracking prompt never interrupt the taste check.
+  const appReady = hydrated && onboardingComplete;
+  useEffect(() => {
+    if (appReady) void initMonetizationOnce();
+  }, [appReady]);
+
+  // Rehydrate before routing; returning players need no added intro delay.
+  if (!hydrated || (isLoading && !onboardingComplete)) {
     return (
       <>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <RiffologyLoadingScreen onFinish={() => setIsLoading(false)} />
       </>
     );
@@ -47,7 +54,7 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerStyle: {

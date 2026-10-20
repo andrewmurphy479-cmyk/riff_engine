@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -15,6 +15,8 @@ import { ExploreIntroCard } from "../../components/ExploreIntroCard";
 import { RiffBarMetaStrip } from "../../components/RiffBarMetaStrip";
 import { RiffContextCard } from "../../components/RiffContextCard";
 import { RiffFretboardView } from "../../components/RiffFretboardView";
+import { ScreenHeading } from "../../components/ScreenHeading";
+import { analog } from "../../theme/analog";
 import { buildRiffSummary, PHRASE_LABELS } from "../../engine/riff/display";
 import { fretRangeForBar } from "../../engine/riff/fretboard";
 import { riffSpecToEvents, stripTechniques } from "../../engine/riff/toEvents";
@@ -106,23 +108,25 @@ export default function ExploreScreen() {
   if (!currentRiff) {
     return (
       <SafeAreaView style={styles.container}>
+        <ScreenHeading title="Explore" subtitle="Get to know the notes under your fingers." />
         <View style={styles.emptyState}>
           <Ionicons
             name="musical-notes-outline"
             size={56}
-            color={colors.textMuted}
+            color={analog.indigo}
           />
-          <Text style={styles.emptyTitle}>Your riff lab is empty</Text>
+          <Text style={styles.emptyTitle}>Start with a riff</Text>
           <Text style={styles.emptySubtitle}>
-            Create your first riff and come back here to see how it's built
-            — every note, every choice, explained.
+            Create a riff, then come back to explore its notes, shape, and rhythm.
           </Text>
           <TouchableOpacity
             style={styles.goCreateButton}
             onPress={() => router.push("/")}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Create a riff to explore"
           >
-            <Text style={styles.goCreateLabel}>Go Create</Text>
+            <Text style={styles.goCreateLabel}>Create a riff</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -141,7 +145,7 @@ export default function ExploreScreen() {
   const effectiveBpm = tempoOverride ?? currentRiff.tempo_bpm;
 
   // Big play tile: the full riff, fretboard following along bar by bar.
-  const handlePlayRiff = useCallback(() => {
+  const handlePlayRiff = () => {
     if (isPlaying && playMode === "riff") {
       stopAudio();
       return;
@@ -155,10 +159,10 @@ export default function ExploreScreen() {
     playAudio(riffEvents, effectiveBpm, false, {
       bars: currentRiff.bars.length,
     });
-  }, [isPlaying, playMode, stopAudio, playAudio, currentRiff, effectiveBpm, showEmbellishments]);
+  };
 
   // Bar tile: loop just the selected bar for close study.
-  const handlePlayBar = useCallback(() => {
+  const handlePlayBar = () => {
     if (isPlaying && playMode === "bar") {
       stopAudio();
       return;
@@ -173,10 +177,11 @@ export default function ExploreScreen() {
     setPlayMode("bar");
     playModeRef.current = "bar";
     playAudio(barEvents, effectiveBpm, true, { bars: 1 });
-  }, [isPlaying, playMode, stopAudio, playAudio, currentRiff, clampedIndex, effectiveBpm, showEmbellishments]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
+      <ScreenHeading title="Explore" subtitle="Get to know the notes under your fingers." />
       <BarSelector
         phraseTags={phraseTags}
         currentIndex={clampedIndex}
@@ -307,6 +312,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    width: "100%",
+    maxWidth: 740,
+    alignSelf: "center",
     paddingBottom: spacing.md,
   },
   emptyState: {
@@ -317,20 +325,25 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontFamily: analog.headingFont,
+    fontSize: 27,
     fontWeight: "600",
     color: colors.textPrimary,
   },
   emptySubtitle: {
     fontSize: 14,
+    lineHeight: 21,
+    maxWidth: 280,
     color: colors.textSecondary,
     textAlign: "center",
   },
   goCreateButton: {
+    minHeight: 48,
+    justifyContent: "center",
     marginTop: spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm + 2,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.full,
     backgroundColor: colors.accent,
   },
   goCreateLabel: {
@@ -347,18 +360,21 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   toolbar: {
+    width: "100%",
+    maxWidth: 620,
+    alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: 6,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   tile: {
-    width: 64,
-    height: 48,
+    flex: 1,
+    minHeight: 50,
     borderRadius: borderRadius.sm,
     backgroundColor: colors.chipInactive,
     alignItems: "center",
@@ -366,10 +382,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   playTile: {
-    width: 56,
-    height: 48,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.accent,
+    flex: 1,
+    minHeight: 50,
+    borderRadius: borderRadius.full,
+    backgroundColor: analog.indigo,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -382,7 +398,7 @@ const styles = StyleSheet.create({
     borderColor: colors.chipActiveBorder,
   },
   tileLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "600",
     color: colors.textSecondary,
   },

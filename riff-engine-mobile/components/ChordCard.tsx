@@ -6,6 +6,7 @@ import { colors, spacing, borderRadius, chordColors, getChordColors, ChordColorS
 import { CHORD_THEORY, getChordShape, FRETBOARD_STRINGS } from '../engine/theory';
 import { CHORD_CARD_DATA, ChordCardMeta } from '../engine/chordCardData';
 import { GuitarString } from '../engine/types';
+import { analog } from '../theme/analog';
 
 interface ChordCardProps {
   chordId: string;
@@ -80,7 +81,7 @@ function MiniFretboard({ chordId, strumKey, accentColor }: MiniFretboardProps) {
     <View style={{ position: 'relative', width: 124, height }}>
       <Svg width={124} height={height}>
         {/* Nut */}
-        <Line x1={8} y1={FRET_OFFSET} x2={116} y2={FRET_OFFSET} stroke="rgba(255,255,255,0.5)" strokeWidth={2} />
+        <Line x1={8} y1={FRET_OFFSET} x2={116} y2={FRET_OFFSET} stroke={analog.ink} strokeWidth={2} />
         {/* Strings */}
         {FRETBOARD_STRINGS.map((s) => (
           <Line
@@ -89,7 +90,7 @@ function MiniFretboard({ chordId, strumKey, accentColor }: MiniFretboardProps) {
             y1={FRET_OFFSET}
             x2={STRING_X[s]}
             y2={height}
-            stroke="rgba(255,255,255,0.15)"
+            stroke={analog.muted}
             strokeWidth={1}
           />
         ))}
@@ -101,7 +102,7 @@ function MiniFretboard({ chordId, strumKey, accentColor }: MiniFretboardProps) {
             y1={FRET_OFFSET + (i + 1) * FRET_SPACING}
             x2={116}
             y2={FRET_OFFSET + (i + 1) * FRET_SPACING}
-            stroke="rgba(255,255,255,0.1)"
+            stroke={analog.line}
             strokeWidth={1}
           />
         ))}
@@ -118,8 +119,8 @@ function MiniFretboard({ chordId, strumKey, accentColor }: MiniFretboardProps) {
               cx={x}
               cy={y}
               r={note.fret === 0 ? 3.5 : 5}
-              fill={note.fret === 0 ? 'transparent' : 'rgba(255,255,255,0.85)'}
-              stroke={note.fret === 0 ? 'rgba(255,255,255,0.6)' : 'none'}
+              fill={note.fret === 0 ? 'transparent' : analog.oxblood}
+              stroke={note.fret === 0 ? analog.muted : 'none'}
               strokeWidth={note.fret === 0 ? 1.5 : 0}
             />
           );
@@ -179,10 +180,10 @@ const dotStyles = StyleSheet.create({
     borderRadius: 3,
   },
   dotFilled: {
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: analog.muted,
   },
   dotEmpty: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: analog.line,
   },
 });
 
@@ -325,6 +326,8 @@ function CardBack({ chordId, meta, chordColor, onFlip }: CardBackProps) {
         }}
         activeOpacity={0.6}
         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Show ${chordId} diagram`}
       >
         <Text style={[cardStyles.flipBtnText, { color: chordColor.text }]}>✕</Text>
       </TouchableOpacity>
@@ -359,38 +362,8 @@ export function ChordCard({
   const strumKeyRef = useRef(0);
   const [strumKey, setStrumKey] = React.useState(0);
 
-  // Flip animation
-  const flipAnim = useRef(new Animated.Value(0)).current;
   const [isFlipped, setIsFlipped] = React.useState(false);
-
-  const handleFlip = useCallback(() => {
-    const toValue = isFlipped ? 0 : 1;
-    setIsFlipped(!isFlipped);
-    Animated.spring(flipAnim, {
-      toValue,
-      tension: 80,
-      friction: 12,
-      useNativeDriver: true,
-    }).start();
-  }, [isFlipped, flipAnim]);
-
-  // Flip interpolations
-  const frontRotate = flipAnim.interpolate({
-    inputRange: [0, 0.5, 0.5, 1],
-    outputRange: ['0deg', '90deg', '90deg', '180deg'],
-  });
-  const frontOpacity = flipAnim.interpolate({
-    inputRange: [0, 0.5, 0.5, 1],
-    outputRange: [1, 1, 0, 0],
-  });
-  const backRotate = flipAnim.interpolate({
-    inputRange: [0, 0.5, 0.5, 1],
-    outputRange: ['180deg', '270deg', '270deg', '360deg'],
-  });
-  const backOpacity = flipAnim.interpolate({
-    inputRange: [0, 0.5, 0.5, 1],
-    outputRange: [0, 0, 1, 1],
-  });
+  const handleFlip = useCallback(() => setIsFlipped((flipped) => !flipped), []);
 
   // Pair glow pulse
   const pairGlowAnim = useRef(new Animated.Value(0)).current;
@@ -463,50 +436,20 @@ export function ChordCard({
         delayLongPress={400}
         activeOpacity={isAllowed ? 0.7 : 1}
         disabled={!isAllowed}
+        accessibilityRole="button"
+        accessibilityLabel={`Add ${chordId} to progression`}
+        accessibilityState={{ selected: isSelected, disabled: !isAllowed }}
       >
-        {/* Front face */}
-        <Animated.View
-          style={[
-            cardStyles.face,
-            {
-              opacity: frontOpacity,
-              transform: [{ perspective: 800 }, { rotateY: frontRotate }],
-            },
-          ]}
-        >
-          <CardFront
-            chordId={chordId}
-            meta={meta}
-            chordColor={chordColor}
-            strumKey={strumKey}
-            onPlayPreview={handlePlay}
-            onFlip={handleFlip}
-          />
-        </Animated.View>
-
-        {/* Back face */}
-        <Animated.View
-          style={[
-            cardStyles.face,
-            cardStyles.backFace,
-            {
-              opacity: backOpacity,
-              transform: [{ perspective: 800 }, { rotateY: backRotate }],
-            },
-          ]}
-        >
-          <CardBack
-            chordId={chordId}
-            meta={meta}
-            chordColor={chordColor}
-            onFlip={handleFlip}
-          />
-        </Animated.View>
+        {isFlipped ? (
+          <CardBack chordId={chordId} meta={meta} chordColor={chordColor} onFlip={handleFlip} />
+        ) : (
+          <CardFront chordId={chordId} meta={meta} chordColor={chordColor} strumKey={strumKey} onPlayPreview={handlePlay} onFlip={handleFlip} />
+        )}
 
         {/* Selected badge */}
         {isSelected && (
           <View style={cardStyles.badge}>
-            <Text style={cardStyles.badgeText}>IN PROGRESSION</Text>
+            <Text style={cardStyles.badgeText}>Added</Text>
           </View>
         )}
       </TouchableOpacity>
@@ -528,7 +471,7 @@ export function ChordCard({
       {/* Pair source badge */}
       {isPairSource && (
         <View style={[cardStyles.pairBadge, { backgroundColor: chordColor.accent }]}>
-          <Text style={cardStyles.pairBadgeText}>PAIRS</Text>
+          <Text style={cardStyles.pairBadgeText}>Pairs</Text>
         </View>
       )}
     </View>
@@ -538,7 +481,7 @@ export function ChordCard({
 const cardStyles = StyleSheet.create({
   card: {
     width: '100%',
-    backgroundColor: colors.surface,
+    backgroundColor: analog.paper,
     borderRadius: borderRadius.md,
     borderWidth: 1.5,
     overflow: 'hidden',
@@ -546,26 +489,16 @@ const cardStyles = StyleSheet.create({
   cardSelected: {
     shadowColor: chordColors.selectedGlow,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
+    shadowOpacity: 0,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 0,
   },
   cardDisabled: {
     opacity: 0.4,
   },
-  face: {
-    width: '100%',
-    backfaceVisibility: 'hidden',
-  },
-  backFace: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
   cardInner: {
     width: '100%',
-    paddingBottom: spacing.md,
+    paddingBottom: 44,
   },
   topBar: {
     height: 4,
@@ -584,9 +517,9 @@ const cardStyles = StyleSheet.create({
     flex: 1,
   },
   playBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -594,7 +527,8 @@ const cardStyles = StyleSheet.create({
     marginLeft: 2,
   },
   chordName: {
-    fontSize: 26,
+    fontSize: 30,
+    fontFamily: analog.headingFont,
     fontWeight: '800',
     color: colors.textPrimary,
     textAlign: 'center',
@@ -618,10 +552,10 @@ const cardStyles = StyleSheet.create({
     position: 'absolute',
     bottom: 8,
     right: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: analog.inset,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -658,7 +592,7 @@ const cardStyles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: colors.textMuted,
-    textTransform: 'uppercase',
+    textTransform: 'none',
     letterSpacing: 0.5,
     marginBottom: 2,
   },
@@ -684,9 +618,9 @@ const cardStyles = StyleSheet.create({
     fontWeight: '600',
   },
   backDescription: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textSecondary,
-    lineHeight: 16,
+    lineHeight: 18,
     marginTop: spacing.xs,
   },
   // Pair glow

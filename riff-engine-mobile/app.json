@@ -4,21 +4,20 @@
     "slug": "riff-engine-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "icon": "./assets/brand/riffology-icon.png",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "riff-engine",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/brand/riffology-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0d0805"
+      "backgroundColor": "#FFF9E8"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.riffengine.mobile",
       "infoPlist": {
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         },
         "ITSAppUsesNonExemptEncryption": false
@@ -26,16 +25,18 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#0B0B0F"
+        "foregroundImage": "./assets/brand/riffology-icon.png",
+        "backgroundColor": "#FFF9E8"
       },
       "package": "com.riffengine.mobile",
-      "permissions": []
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/icon.png"
+      "favicon": "./assets/brand/riffology-icon.png"
     },
     "plugins": [
       "expo-router",
@@ -48,6 +49,23 @@
           "androidForegroundService": false,
           "disableFFmpeg": true,
           "disableStaticExternalLibs": true
+        }
+      ],
+      "expo-iap",
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This lets Riffology show you more relevant ads while keeping the riff generator free."
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-8042868551988044~1477465638",
+          "skAdNetworkItems": [
+            "cstr6suwn9.skadnetwork"
+          ]
         }
       ]
     ],

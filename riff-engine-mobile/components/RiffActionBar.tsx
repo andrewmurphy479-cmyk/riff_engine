@@ -49,7 +49,7 @@ export function RiffActionBar({
         accessibilityLabel="Generate new riff"
       >
         <Ionicons name="shuffle" size={22} color={colors.textSecondary} />
-        <Text style={styles.iconLabel}>new</Text>
+        <Text style={styles.iconLabel}>New</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -69,7 +69,7 @@ export function RiffActionBar({
           color={isLooping ? colors.accent : colors.textSecondary}
         />
         <Text style={[styles.iconLabel, isLooping && styles.iconLabelActive]}>
-          loop
+          Loop
         </Text>
       </TouchableOpacity>
 
@@ -109,7 +109,7 @@ export function RiffActionBar({
           size={22}
           color={isSaved ? colors.heart : colors.textSecondary}
         />
-        <Text style={styles.iconLabel}>{isSaved ? "saved" : "save"}</Text>
+        <Text style={styles.iconLabel}>{isSaved ? "Saved" : "Save"}</Text>
       </TouchableOpacity>
 
       {onShare && (
@@ -133,7 +133,7 @@ export function RiffActionBar({
               color={colors.textSecondary}
             />
           )}
-          <Text style={styles.iconLabel}>share</Text>
+          <Text style={styles.iconLabel}>Share</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -142,6 +142,10 @@ export function RiffActionBar({
 
 const styles = StyleSheet.create({
   bar: {
+    width: "100%",
+    maxWidth: 620,
+    alignSelf: "center",
+    gap: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -149,21 +153,22 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: colors.border,
     backgroundColor: colors.background,
   },
   iconButton: {
     alignItems: "center",
     justifyContent: "center",
-    width: 52,
+    flex: 1,
+    minHeight: 48,
     gap: 2,
   },
   iconLabel: {
     color: colors.textMuted,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "600",
     letterSpacing: 0.4,
-    textTransform: "uppercase",
+    textTransform: "none",
   },
   iconLabelActive: {
     color: colors.accent,
@@ -174,15 +179,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingVertical: 14,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     borderRadius: 999,
     backgroundColor: colors.accent,
-    minWidth: 130,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    flex: 2,
+    minHeight: 52,
   },
   playDisabled: {
     opacity: 0.4,
