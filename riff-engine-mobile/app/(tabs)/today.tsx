@@ -9,7 +9,12 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
+import { StatusBar } from "expo-status-bar";
+import { BrandWordmark } from "../../components/BrandWordmark";
+import { RiffTabView } from "../../components/RiffTabView";
+import { analog } from "../../theme/analog";
 import { useAudioEngine } from "../../audio/AudioEngine";
 import { DrillSheet } from "../../components/DrillSheet";
 import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
@@ -21,7 +26,6 @@ import {
   RiffResult,
   usePracticeStore,
 } from "../../store/usePracticeStore";
-import { borderRadius, colors, spacing, typography } from "../../theme/colors";
 
 function formatMinutes(seconds: number): string {
   const mins = Math.round(seconds / 60);
@@ -29,6 +33,7 @@ function formatMinutes(seconds: number): string {
 }
 
 export default function TodayScreen() {
+  const isFocused = useIsFocused();
   const session = usePracticeStore((s) => s.session);
   const stats = usePracticeStore((s) => s.stats);
   const streak = usePracticeStore((s) => effectiveStreak(s));
@@ -44,6 +49,8 @@ export default function TodayScreen() {
   const [drillIdx, setDrillIdx] = useState<number | null>(null);
   const drillCloseRef = useRef<(() => void) | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [activeStep, setActiveStep] = useState<number | null>(null);
   const playStartRef = useRef<number | null>(null);
 
   const flushSeconds = useCallback(() => {
@@ -61,7 +68,9 @@ export default function TodayScreen() {
     onPlaybackEnd: () => {
       flushSeconds();
       setPlayingIdx(null);
+      setActiveStep(null);
     },
+    onStepPlay: (step) => setActiveStep(step >= 0 ? step : null),
   });
 
   // Roll a fresh session over at day boundaries whenever the tab regains focus.
@@ -149,180 +158,186 @@ export default function TodayScreen() {
   if (!session) {
     return (
       <SafeAreaView style={styles.safe}>
+        {isFocused && <StatusBar style="dark" />}
         <View style={styles.center}>
-          <Text style={styles.subtitle}>Setting up today's practice…</Text>
+          <BrandWordmark width={204} />
+          <Text style={styles.subtitle}>Finding something worth playing…</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   const doneCount = session.completed.filter(Boolean).length;
-  const progress = doneCount / session.goalCount;
+  const nextIdx = session.completed.findIndex((done) => !done);
+  const featuredIdx = Math.min(selectedIdx ?? Math.max(0, nextIdx), session.riffs.length - 1);
+  const featured = session.riffs[featuredIdx];
+  const featuredPlaying = playingIdx === featuredIdx;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.kicker}>TODAY'S PRACTICE</Text>
-            <Text style={styles.title}>
-              {complete ? "Nice work!" : "Let's play"}
-            </Text>
-          </View>
-          <View style={styles.streakBadge}>
-            <Ionicons name="flame" size={18} color={colors.warning} />
-            <Text style={styles.streakNum}>{streak}</Text>
-          </View>
-        </View>
-
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          <Stat label="Best" value={`${Math.max(longestStreak, streak)}`} />
-          <Stat label="Days" value={`${stats.daysPracticed}`} />
-          <Stat label="Riffs" value={`${stats.totalRiffs}`} />
-          <Stat label="Minutes" value={formatMinutes(stats.totalSeconds)} />
-        </View>
-
-        {/* Goal progress */}
-        <View style={styles.goalCard}>
-          <View style={styles.goalHeader}>
-            <Text style={styles.goalLabel}>Daily goal</Text>
-            <Text style={styles.goalCount}>
-              {doneCount} / {session.goalCount}
-            </Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <View
-              style={[styles.progressFill, { width: `${progress * 100}%` }]}
-            />
-          </View>
-          {complete && (
-            <Text style={styles.completeNote}>
-              You hit today's goal — streak secured. 🔥
-            </Text>
-          )}
-        </View>
-
-        {/* Today's lesson — what these four riffs have in common, and why */}
-        <View style={styles.themeCard}>
-          <View style={styles.themeHeader}>
-            <Ionicons
-              name="school-outline"
-              size={16}
-              color={colors.accent}
-            />
-            <Text style={styles.themeKicker}>TODAY'S FOCUS</Text>
-          </View>
-          <Text style={styles.themeLabel}>{session.theme.label}</Text>
-          <Text style={styles.themeFocus}>{session.theme.focus}</Text>
-          <TouchableOpacity
-            onPress={() => {
-              hapticTap();
-              setThemeOpen((v) => !v);
-            }}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={
-              themeOpen ? "Hide lesson detail" : "Show lesson detail"
-            }
-          >
-            <Text style={styles.themeMore}>
-              {themeOpen ? "Less" : "What is this?"}
-            </Text>
-          </TouchableOpacity>
-          {themeOpen && (
-            <Text style={styles.themeBlurb}>{session.theme.blurb}</Text>
-          )}
-        </View>
-
-        {/* Riff list */}
-        {session.riffs.map((riff, idx) => {
-          const done = session.completed[idx];
-          const isPlaying = playingIdx === idx;
-          const result = session.results[idx];
-          return (
-            <View key={`${riff.seed}-${idx}`} style={styles.riffCard}>
-              <TouchableOpacity
-                style={[styles.playBtn, isPlaying && styles.playBtnActive]}
-                onPress={() => handlePlay(idx)}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isPlaying ? `Stop riff ${idx + 1}` : `Play riff ${idx + 1}`
-                }
-              >
-                <Ionicons
-                  name={isPlaying ? "stop" : "play"}
-                  size={20}
-                  color={isPlaying ? colors.white : colors.accent}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.riffMeta}
-                onPress={() => handleOpenDrill(idx)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Drill riff ${idx + 1}`}
-              >
-                <Text style={styles.riffTitle}>Riff {idx + 1}</Text>
-                <Text style={styles.riffSub}>
-                  Key {riff.key}
-                  {riff.feel
-                    ? ` · ${FEEL_DISPLAY_NAMES[riff.feel] ?? riff.feel}`
-                    : ""}
-                  {` · ${riff.tempo_bpm} bpm`}
-                </Text>
-                <Text style={styles.riffOpenHint}>
-                  {result && result.reps > 0
-                    ? `${result.reps} rep${result.reps === 1 ? "" : "s"} · up to ${result.topTempoPct}% · drill again ›`
-                    : "Drill this riff ›"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.doneBtn, done && styles.doneBtnActive]}
-                onPress={() => handleMarkDone(idx)}
-                disabled={done}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  done
-                    ? `Riff ${idx + 1} practiced`
-                    : `Mark riff ${idx + 1} as practiced`
-                }
-              >
-                <Ionicons
-                  name={done ? "checkmark-circle" : "ellipse-outline"}
-                  size={26}
-                  color={done ? colors.success : colors.textMuted}
-                />
-              </TouchableOpacity>
+      {isFocused && <StatusBar style="dark" />}
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.page}>
+          <View style={styles.headerRow}>
+            <View>
+              <BrandWordmark />
+              <Text style={styles.brandLine}>Make room for a riff.</Text>
             </View>
-          );
-        })}
+            <TouchableOpacity
+              style={styles.settingsBtn}
+              onPress={() => router.push("/settings")}
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+            >
+              <Ionicons name="options-outline" size={23} color={analog.oxblood} />
+            </TouchableOpacity>
+          </View>
 
-        {/* Regenerate */}
-        <TouchableOpacity
-          style={styles.regenBtn}
-          onPress={() => {
-            audio.stop();
-            setPlayingIdx(null);
-            regenerateSession();
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-          <Text style={styles.regenText}>New set of riffs</Text>
-        </TouchableOpacity>
+          <View style={styles.focusPanel}>
+            <View style={styles.focusTop}>
+              <Text style={styles.focusLabel}>Today's focus</Text>
+              <Ionicons name="musical-notes-outline" size={22} color={analog.oxblood} />
+            </View>
+            <Text style={styles.focusTitle}>{session.theme.label}</Text>
+            <Text style={styles.focusCopy}>{session.theme.focus}</Text>
+            <TouchableOpacity
+              style={styles.lessonButton}
+              onPress={() => { hapticTap(); setThemeOpen((value) => !value); }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: themeOpen }}
+              accessibilityLabel={themeOpen ? "Hide lesson detail" : "Show lesson detail"}
+            >
+              <Text style={styles.lessonButtonText}>{themeOpen ? "Close the lesson" : "Why this matters"}</Text>
+              <Ionicons name={themeOpen ? "chevron-up" : "chevron-down"} size={15} color={analog.oxblood} />
+            </TouchableOpacity>
+            {themeOpen && <Text style={styles.lessonCopy}>{session.theme.blurb}</Text>}
+          </View>
+
+          {featured && (
+            <View style={styles.featured}>
+              <View style={styles.featuredHeader}>
+                <View style={styles.featuredTitleGroup}>
+                  <Text style={styles.riffEyebrow}>{complete ? "Play it again" : "Something to work on"}</Text>
+                  <Text style={styles.featuredTitle}>Riff {featuredIdx + 1}</Text>
+                  <Text style={styles.subtitle}>
+                    {featured.key} {featured.scale.replace(/_/g, " ").replace("+blue", " + blue")}{featured.feel ? " / " + (FEEL_DISPLAY_NAMES[featured.feel] ?? featured.feel) : ""}
+                  </Text>
+                </View>
+                <View style={styles.tempo}>
+                  <Text style={styles.tempoValue}>{featured.tempo_bpm}</Text>
+                  <Text style={styles.tempoLabel}>BPM</Text>
+                </View>
+              </View>
+              <RiffTabView riff={featured} appearance="analog" compact activeStep={featuredPlaying ? activeStep : null} />
+              <Text style={styles.previewCaption}>Opening phrase · {featured.bars.length} bars in the full riff</Text>
+              <View style={styles.featuredActions}>
+                <TouchableOpacity
+                  style={styles.listenBtn}
+                  onPress={() => handlePlay(featuredIdx)}
+                  accessibilityRole="button"
+                  accessibilityLabel={featuredPlaying ? "Stop preview" : "Listen to this riff"}
+                >
+                  <Ionicons name={featuredPlaying ? "stop" : "play-outline"} size={18} color={analog.oxblood} />
+                  <Text style={styles.listenLabel}>{featuredPlaying ? "Stop" : "Listen"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.practiceBtn}
+                  onPress={() => handleOpenDrill(featuredIdx)}
+                  accessibilityRole="button"
+                  accessibilityLabel={"Practice riff " + (featuredIdx + 1)}
+                >
+                  <Text style={styles.practiceLabel}>Practice this riff</Text>
+                  <Ionicons name="arrow-forward" size={18} color={analog.paper} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.setHeader}>
+            <Text style={styles.sectionTitle}>{complete ? "Today's set, played." : "Today's set"}</Text>
+            <Text style={styles.setCount}>{doneCount} of {session.goalCount} practiced</Text>
+          </View>
+          <View
+            style={styles.progressTrack}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Daily practice"
+            accessibilityValue={{ min: 0, max: session.goalCount, now: doneCount }}
+          >
+            {session.riffs.map((_, idx) => (
+              <View key={idx} style={[styles.progressPart, session.completed[idx] && styles.progressPartDone]} />
+            ))}
+          </View>
+
+          <View style={styles.riffList}>
+            {session.riffs.map((riff, idx) => {
+              const done = session.completed[idx];
+              const selected = featuredIdx === idx;
+              const result = session.results[idx];
+              return (
+                <View key={riff.seed + "-" + idx} style={[styles.riffRow, selected && styles.riffRowSelected]}>
+                  <TouchableOpacity
+                    style={styles.riffSelect}
+                    onPress={() => {
+                      if (playingIdx !== null && playingIdx !== idx) audio.stop();
+                      hapticSelect();
+                      setSelectedIdx(idx);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={"Preview riff " + (idx + 1)}
+                  >
+                    <View style={[styles.riffNumber, selected && styles.riffNumberSelected]}>
+                      <Text style={[styles.riffNumberText, selected && styles.riffNumberTextSelected]}>{idx + 1}</Text>
+                    </View>
+                    <View style={styles.riffMeta}>
+                      <Text style={styles.riffTitle}>{riff.key} / {FEEL_DISPLAY_NAMES[riff.feel ?? ""] ?? "Riff " + (idx + 1)}</Text>
+                      <Text style={styles.riffSub}>
+                        {riff.tempo_bpm} bpm{result && result.reps > 0 ? " / " + result.reps + " reps played" : " / " + riff.bars.length + " bars to explore"}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.doneBtn}
+                    onPress={() => handleMarkDone(idx)}
+                    disabled={done}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: done }}
+                    accessibilityLabel={done ? "Riff " + (idx + 1) + " practiced" : "Mark riff " + (idx + 1) + " as practiced"}
+                  >
+                    <Ionicons name={done ? "checkmark-circle" : "ellipse-outline"} size={24} color={done ? analog.success : analog.muted} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+
+          {complete && <Text style={styles.completeNote}>A little more music in your day. Nice work.</Text>}
+          <TouchableOpacity
+            style={styles.regenBtn}
+            onPress={() => {
+              audio.stop();
+              setPlayingIdx(null);
+              setSelectedIdx(null);
+              regenerateSession();
+            }}
+            accessibilityRole="button"
+          >
+            <Ionicons name="refresh-outline" size={17} color={analog.indigo} />
+            <Text style={styles.regenText}>Find a fresh set</Text>
+          </TouchableOpacity>
+
+          <View style={styles.practiceHistory}>
+            <Text style={styles.historyTitle}>Your practice, adding up</Text>
+            <View style={styles.statsRow}>
+              <Stat label="Days played" value={String(stats.daysPracticed)} />
+              <Stat label="Riffs played" value={String(stats.totalRiffs)} />
+              <Stat label="Minutes" value={formatMinutes(stats.totalSeconds)} />
+            </View>
+            <Text style={styles.streakNote}>{streak} day streak / personal best {Math.max(longestStreak, streak)}</Text>
+          </View>
+        </View>
       </ScrollView>
 
-      {/* The guided drill. Mounted only while open — it takes the engine's
-          callbacks over for its lifetime and hands them back on close. */}
       <Modal
         visible={drillIdx !== null}
         animationType="slide"
@@ -352,148 +367,62 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  kicker: {
-    ...typography.small,
-    color: colors.accent,
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  title: { ...typography.h1, color: colors.textPrimary },
-  subtitle: { ...typography.body, color: colors.textSecondary },
-  streakBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
-  },
-  streakNum: { ...typography.h3, color: colors.warning },
-  statsRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  stat: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    alignItems: "center",
-  },
-  statValue: { ...typography.h2, color: colors.textPrimary },
-  statLabel: { ...typography.small, color: colors.textMuted, marginTop: 2 },
-  goalCard: {
-    backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-  },
-  goalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.md,
-  },
-  goalLabel: { ...typography.h3, color: colors.textPrimary },
-  goalCount: { ...typography.h3, color: colors.accent },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.chipInactive,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-  },
-  completeNote: {
-    ...typography.caption,
-    color: colors.success,
-    marginTop: spacing.md,
-  },
-  themeCard: {
-    backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: "rgba(249, 115, 22, 0.22)",
-    padding: spacing.lg,
-    gap: 6,
-  },
-  themeHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
-  themeKicker: {
-    ...typography.small,
-    color: colors.accent,
-    letterSpacing: 1.2,
-    fontWeight: "700",
-  },
-  themeLabel: { ...typography.h3, color: colors.textPrimary },
-  themeFocus: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    lineHeight: 19,
-  },
-  themeMore: {
-    ...typography.small,
-    color: colors.accent,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  themeBlurb: {
-    ...typography.caption,
-    color: colors.textMuted,
-    lineHeight: 19,
-    marginTop: 2,
-  },
-  riffCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  playBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.chipActive,
-  },
-  playBtnActive: { backgroundColor: colors.accent },
+  safe: { flex: 1, backgroundColor: analog.paper },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 20 },
+  scroll: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 },
+  page: { width: "100%", maxWidth: 620, alignSelf: "center" },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+  brandLine: { color: analog.muted, fontSize: 12, marginTop: 2 },
+  settingsBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  focusPanel: { backgroundColor: analog.butter, borderRadius: 4, borderTopRightRadius: 28, padding: 22, marginBottom: 24 },
+  focusTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  focusLabel: { color: analog.oxblood, fontSize: 13, fontWeight: "600" },
+  focusTitle: { fontFamily: analog.headingFont, fontSize: 30, lineHeight: 35, fontWeight: "700", letterSpacing: -0.8, color: analog.oxblood, marginBottom: 10 },
+  focusCopy: { fontSize: 15, lineHeight: 23, color: analog.ink },
+  lessonButton: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, alignSelf: "flex-start", marginTop: 4 },
+  lessonButtonText: { fontSize: 13, fontWeight: "600", color: analog.oxblood },
+  lessonCopy: { fontSize: 14, lineHeight: 22, color: analog.ink, paddingTop: 8, borderTopWidth: 1, borderTopColor: "rgba(114,44,61,0.2)" },
+  featured: { marginBottom: 30 },
+  featuredHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: 2 },
+  featuredTitleGroup: { flex: 1 },
+  riffEyebrow: { color: analog.muted, fontSize: 12, marginBottom: 5 },
+  featuredTitle: { fontSize: 24, fontWeight: "700", letterSpacing: -0.5, color: analog.ink, marginBottom: 5 },
+  subtitle: { fontSize: 13, lineHeight: 19, color: analog.muted },
+  tempo: { alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, borderLeftWidth: 1, borderLeftColor: analog.line },
+  tempoValue: { fontSize: 27, fontWeight: "600", color: analog.oxblood, fontVariant: ["tabular-nums"] },
+  tempoLabel: { fontSize: 10, color: analog.muted, marginTop: 2 },
+  previewCaption: { color: analog.muted, fontSize: 11, textAlign: "center", marginBottom: 18 },
+  featuredActions: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
+  listenBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", minHeight: 50, paddingHorizontal: 20, borderRadius: 25, borderWidth: 1, borderColor: analog.oxblood, gap: 8 },
+  listenLabel: { color: analog.oxblood, fontSize: 14, fontWeight: "600" },
+  practiceBtn: { flex: 1, minWidth: 170, flexDirection: "row", alignItems: "center", justifyContent: "center", minHeight: 50, borderRadius: 25, paddingHorizontal: 18, gap: 12, backgroundColor: analog.oxblood },
+  practiceLabel: { color: analog.paper, fontSize: 14, fontWeight: "600" },
+  setHeader: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" },
+  sectionTitle: { fontSize: 19, fontWeight: "700", color: analog.ink },
+  setCount: { fontSize: 12, color: analog.muted },
+  progressTrack: { flexDirection: "row", gap: 5, marginTop: 12, marginBottom: 12 },
+  progressPart: { height: 4, borderRadius: 2, flex: 1, backgroundColor: analog.line },
+  progressPartDone: { backgroundColor: analog.success },
+  riffList: { gap: 2 },
+  riffRow: { flexDirection: "row", alignItems: "center", borderRadius: 12, minHeight: 76, paddingRight: 6 },
+  riffRowSelected: { backgroundColor: analog.inset },
+  riffSelect: { flex: 1, flexDirection: "row", alignItems: "center", gap: 13, paddingVertical: 14, paddingHorizontal: 12 },
+  riffNumber: { width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: analog.line },
+  riffNumberSelected: { backgroundColor: analog.oxblood, borderColor: analog.oxblood },
+  riffNumberText: { color: analog.muted, fontSize: 13, fontWeight: "600" },
+  riffNumberTextSelected: { color: analog.paper },
   riffMeta: { flex: 1 },
-  riffTitle: { ...typography.h3, color: colors.textPrimary },
-  riffSub: { ...typography.caption, color: colors.textSecondary, marginTop: 2 },
-  riffOpenHint: {
-    ...typography.small,
-    color: colors.accent,
-    marginTop: 4,
-    fontWeight: "600",
-  },
-  doneBtn: { padding: spacing.xs },
-  doneBtnActive: {},
-  regenBtn: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: spacing.md,
-    marginTop: spacing.sm,
-  },
-  regenText: { ...typography.caption, color: colors.textSecondary },
+  riffTitle: { fontSize: 15, fontWeight: "600", color: analog.ink },
+  riffSub: { fontSize: 12, color: analog.muted, marginTop: 4, lineHeight: 17 },
+  doneBtn: { width: 44, minHeight: 48, alignItems: "center", justifyContent: "center" },
+  completeNote: { color: analog.success, fontSize: 14, lineHeight: 21, marginTop: 14 },
+  regenBtn: { flexDirection: "row", minHeight: 48, alignItems: "center", justifyContent: "center", gap: 8, marginTop: 12 },
+  regenText: { color: analog.indigo, fontSize: 14, fontWeight: "600" },
+  practiceHistory: { marginTop: 22, borderTopWidth: 1, borderTopColor: analog.line, paddingTop: 22 },
+  historyTitle: { color: analog.muted, fontSize: 13, marginBottom: 18 },
+  statsRow: { flexDirection: "row", gap: 12 },
+  stat: { flex: 1 },
+  statValue: { color: analog.ink, fontSize: 23, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  statLabel: { color: analog.muted, fontSize: 11, marginTop: 4 },
+  streakNote: { color: analog.muted, fontSize: 12, marginTop: 18 },
 });

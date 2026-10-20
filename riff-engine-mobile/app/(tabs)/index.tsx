@@ -1,10 +1,13 @@
 import * as Sharing from "expo-sharing";
+import { Ionicons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { BarActionSheet } from "../../components/BarActionSheet";
@@ -14,6 +17,8 @@ import { LevelSelector } from "../../components/LevelSelector";
 import { RiffActionBar } from "../../components/RiffActionBar";
 import { RiffTabView } from "../../components/RiffTabView";
 import { TempoStepper } from "../../components/TempoStepper";
+import { ScreenHeading } from "../../components/ScreenHeading";
+import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { useAudioEngine } from "../../audio/AudioEngine";
 import { AudioExporter } from "../../audio/AudioExporter";
 import { TabEvent } from "../../engine/types";
@@ -52,6 +57,7 @@ export default function HomeScreen() {
   const [isSharing, setIsSharing] = useState(false);
   const [activeStep, setActiveStep] = useState<number | null>(null);
   const [barSheetIdx, setBarSheetIdx] = useState<number | null>(null);
+  const [controlsOpen, setControlsOpen] = useState(false);
 
   // Bar loops re-base steps to 0-15; this offset maps them back onto the
   // full tab so the playhead lands in the right bar.
@@ -210,6 +216,21 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <ScreenHeading title="Create" subtitle="Find a phrase you wouldn't have played." />
+        <TouchableOpacity
+          style={styles.controlsToggle}
+          onPress={() => setControlsOpen((open) => !open)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: controlsOpen }}
+          accessibilityLabel="Shape the next riff"
+        >
+          <View style={styles.controlsCopy}>
+            <Text style={styles.controlsTitle}>Shape the next riff</Text>
+            <Text style={styles.controlsSummary}>{level.charAt(0).toUpperCase() + level.slice(1)} / {key} / {feel ? FEEL_DISPLAY_NAMES[feel] : "Any feel"}</Text>
+          </View>
+          <Ionicons name={controlsOpen ? "chevron-up" : "options-outline"} size={21} color={colors.accent} />
+        </TouchableOpacity>
+        {controlsOpen && <View style={styles.generatorControls}>
         <LevelSelector value={level} onChange={setLevel} />
         <KeySelector
           value={key}
@@ -223,6 +244,7 @@ export default function HomeScreen() {
           onChange={setFeel}
           onToggleLock={() => toggleLock("feel")}
         />
+        </View>}
 
         {currentRiff && (
           <View style={styles.cardWrap}>
@@ -235,6 +257,7 @@ export default function HomeScreen() {
             />
           </View>
         )}
+        <Text style={styles.tabHint}>Tap a bar to loop it or try new notes.</Text>
       </ScrollView>
 
       <TempoStepper
@@ -279,10 +302,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    width: "100%",
+    maxWidth: 740,
+    alignSelf: "center",
+    paddingBottom: spacing.lg,
   },
   cardWrap: {
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
   },
+  controlsToggle: { marginHorizontal: spacing.lg, padding: spacing.md, backgroundColor: colors.card, borderRadius: 14, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64 },
+  controlsCopy: { flex: 1 },
+  controlsTitle: { color: colors.textPrimary, fontSize: 14, fontWeight: "600" },
+  controlsSummary: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 3 },
+  generatorControls: { paddingTop: spacing.sm },
+  tabHint: { fontSize: 12, lineHeight: 18, textAlign: "center", color: colors.textMuted, marginTop: spacing.md, paddingHorizontal: spacing.lg },
 });

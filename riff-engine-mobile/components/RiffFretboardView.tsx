@@ -8,12 +8,15 @@ import Svg, {
   Rect,
   Text as SvgText,
 } from "react-native-svg";
-import { ROLE_COLORS, ROLE_HINTS, ROLE_ORDER } from "../engine/riff/display";
+import { ROLE_HINTS, ROLE_ORDER } from "../engine/riff/display";
 import { MAX_FRET, midiAt } from "../engine/riff/fretboard";
 import { roleOf } from "../engine/riff/scale";
 import { Bar } from "../engine/riff/spec";
 import { colors, spacing } from "../theme/colors";
 
+import { analog } from "../theme/analog";
+
+const ROLE_COLORS = analog.roleColors;
 const STRING_COUNT = 6;
 const STRING_GAP = 40;
 const FRET_HEIGHT = 44;
@@ -28,12 +31,12 @@ const DOUBLE_MARKER = 12;
 const STRING_LABELS = ["E", "A", "D", "G", "B", "e"] as const;
 
 const STRING_STYLES = [
-  { width: 2.4, color: "rgba(180,170,155,0.7)"  },
-  { width: 2.0, color: "rgba(180,170,155,0.65)" },
-  { width: 1.6, color: "rgba(190,180,165,0.6)"  },
-  { width: 1.2, color: "rgba(210,205,195,0.55)" },
-  { width: 0.9, color: "rgba(220,215,205,0.7)"  },
-  { width: 0.8, color: "rgba(220,215,205,0.7)"  },
+  { width: 2.4, color: "#736658"  },
+  { width: 2.0, color: "#817161" },
+  { width: 1.6, color: "#817161"  },
+  { width: 1.2, color: "#8D7B65" },
+  { width: 0.9, color: "#8D7B65"  },
+  { width: 0.8, color: "#8D7B65"  },
 ];
 
 const GRAIN_OFFSETS = [0.12, 0.28, 0.47, 0.68, 0.85];
@@ -93,8 +96,8 @@ const NeckBackground = React.memo(function NeckBackground({
         height={boardHeight}
         rx={8}
         ry={8}
-        fill="#2A1B0E"
-        stroke="#3D2A18"
+        fill="#EAD8B6"
+        stroke="#CBB994"
         strokeWidth={1.5}
       />
 
@@ -108,7 +111,7 @@ const NeckBackground = React.memo(function NeckBackground({
             y1={y}
             x2={neckRight - 4}
             y2={y}
-            stroke="rgba(255,255,255,0.03)"
+            stroke="rgba(114,81,42,0.07)"
             strokeWidth={0.8}
           />
         );
@@ -117,8 +120,8 @@ const NeckBackground = React.memo(function NeckBackground({
       {/* 3. Headstock hint + tuning pegs */}
       <Path
         d={`M ${neckLeft + 12} ${TOP_MARGIN} L ${neckLeft + 6} ${TOP_MARGIN - 18} L ${neckRight - 6} ${TOP_MARGIN - 18} L ${neckRight - 12} ${TOP_MARGIN} Z`}
-        fill="#1A1008"
-        stroke="#2A1B0E"
+        fill="#DFCAA4"
+        stroke="#CBB994"
         strokeWidth={1}
       />
       {STRING_LABELS.map((_, i) => {
@@ -158,7 +161,7 @@ const NeckBackground = React.memo(function NeckBackground({
               y1={y + 0.5}
               x2={neckRight - 2}
               y2={y + 0.5}
-              stroke="rgba(192,192,210,0.2)"
+              stroke="#D1C0A2"
               strokeWidth={1.5}
             />
             <Line
@@ -166,7 +169,7 @@ const NeckBackground = React.memo(function NeckBackground({
               y1={y}
               x2={neckRight - 2}
               y2={y}
-              stroke="rgba(192,192,210,0.5)"
+              stroke="#A79273"
               strokeWidth={1}
             />
           </G>
@@ -180,7 +183,7 @@ const NeckBackground = React.memo(function NeckBackground({
           cx={LEFT_MARGIN + boardWidth / 2}
           cy={fretY(f)}
           r={5}
-          fill="#C8BFA0"
+          fill="#887355"
           opacity={0.3}
         />
       ))}
@@ -190,14 +193,14 @@ const NeckBackground = React.memo(function NeckBackground({
             cx={LEFT_MARGIN + boardWidth / 2 - 22}
             cy={fretY(DOUBLE_MARKER)}
             r={4}
-            fill="#C8BFA0"
+            fill="#887355"
             opacity={0.3}
           />
           <Circle
             cx={LEFT_MARGIN + boardWidth / 2 + 22}
             cy={fretY(DOUBLE_MARKER)}
             r={4}
-            fill="#C8BFA0"
+            fill="#887355"
             opacity={0.3}
           />
         </G>
@@ -354,7 +357,7 @@ export function RiffFretboardView({
 
           {/* Scale-shape overlay — ghost dots at every pool position */}
           {showScaleShape && (
-            <G opacity={0.2}>
+            <G>
               {scalePositions.map(({ stringIdx, fret, role }) => {
                 const key = `${stringIdx}-${fret}`;
                 if (playedKeys.has(key)) return null;
@@ -363,13 +366,13 @@ export function RiffFretboardView({
                 const color = ROLE_COLORS[role] ?? ROLE_COLORS["?"];
                 return (
                   <G key={`scale-${key}`}>
-                    <Circle cx={cx} cy={cy} r={5} fill={color} />
+                    <Circle cx={cx} cy={cy} r={showNoteNames ? 8 : 5} fill={color} opacity={0.22} />
                     {showNoteNames && (
                       <SvgText
                         x={cx}
                         y={cy + 3}
-                        fill="rgba(255,255,255,0.7)"
-                        fontSize={7}
+                        fill={analog.ink}
+                        fontSize={8}
                         fontWeight="600"
                         textAnchor="middle"
                       >
@@ -387,7 +390,7 @@ export function RiffFretboardView({
             <Path
               d={pathD}
               fill="none"
-              stroke="rgba(255,255,255,0.45)"
+              stroke={analog.ink}
               strokeWidth={1.4}
               strokeDasharray="4 4"
               strokeLinecap="round"
@@ -515,7 +518,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   legendLabel: {
-    color: "rgba(255,255,255,0.65)",
+    color: analog.muted,
     fontSize: 11,
     fontFamily: "monospace",
   },

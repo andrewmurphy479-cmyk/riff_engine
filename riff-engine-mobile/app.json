@@ -4,14 +4,14 @@
     "slug": "riff-engine-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "icon": "./assets/brand/riffology-icon.png",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "riff-engine",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/brand/riffology-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0d0805"
+      "backgroundColor": "#FFF9E8"
     },
     "ios": {
       "supportsTablet": true,
@@ -26,8 +26,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#0B0B0F"
+        "foregroundImage": "./assets/brand/riffology-icon.png",
+        "backgroundColor": "#FFF9E8"
       },
       "package": "com.riffengine.mobile",
       "permissions": []
@@ -35,7 +35,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/icon.png"
+      "favicon": "./assets/brand/riffology-icon.png"
     },
     "plugins": [
       "expo-router",

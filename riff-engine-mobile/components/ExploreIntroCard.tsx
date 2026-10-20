@@ -3,6 +3,7 @@ import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useNewRiffStore } from "../store/useNewRiffStore";
 import { colors, spacing } from "../theme/colors";
+import { analog } from "../theme/analog";
 
 export function ExploreIntroCard() {
   const dismissed = useNewRiffStore((s) => s.exploreIntroDismissed);
@@ -38,10 +39,10 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     padding: spacing.md,
-    backgroundColor: colors.cardSolid,
+    backgroundColor: analog.butter,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(74, 122, 255, 0.15)",
+    borderColor: colors.border,
     gap: 8,
   },
   header: {

@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { hapticSelect } from "../lib/haptics";
 import { borderRadius, colors, spacing } from "../theme/colors";
+import { analog } from "../theme/analog";
 
 interface Props {
   phraseTags: readonly string[];
@@ -28,7 +29,7 @@ export function BarSelector({ phraseTags, currentIndex, onSelect }: Props) {
             accessibilityLabel={`Bar ${i + 1}, phrase ${tag}`}
           >
             <Text style={[styles.barLabel, active && styles.labelActive]}>
-              BAR {i + 1}
+              Bar {i + 1}
             </Text>
             <Text style={[styles.tag, active && styles.tagActive]}>{tag}</Text>
           </TouchableOpacity>
@@ -40,6 +41,9 @@ export function BarSelector({ phraseTags, currentIndex, onSelect }: Props) {
 
 const styles = StyleSheet.create({
   row: {
+    width: "100%",
+    maxWidth: 740,
+    alignSelf: "center",
     flexDirection: "row",
     gap: 8,
     paddingHorizontal: spacing.lg,
@@ -55,17 +59,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   chipActive: {
-    backgroundColor: colors.chipActive,
-    borderColor: colors.chipActiveBorder,
+    backgroundColor: analog.indigo,
+    borderColor: analog.indigo,
   },
   barLabel: {
     color: colors.textMuted,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.8,
   },
   labelActive: {
-    color: colors.textSecondary,
+    color: analog.paper,
   },
   tag: {
     color: colors.textSecondary,
@@ -75,6 +79,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   tagActive: {
-    color: colors.accent,
+    color: analog.paper,
   },
 });

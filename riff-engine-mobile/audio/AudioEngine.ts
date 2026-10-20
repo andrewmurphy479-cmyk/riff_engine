@@ -26,6 +26,7 @@ import {
 import { fretToMidiNote } from './noteMapping';
 import {
   CHOKE_FADE_S,
+  chokeGain,
   groupedJitter,
   polyphonyScale,
   STEPS_PER_BEAT,
@@ -50,6 +51,9 @@ const START_LATENCY_S = 0.08;
 const LOOP_LOOKAHEAD_MS = 250;
 // How long a riff must sit on screen before its tones are warmed (audit A8).
 const PREPARE_DELAY_MS = 350;
+// Points sampled along the choke fade's raised-cosine curve — enough for
+// setValueCurveAtTime's interpolation to read as smooth over 25ms.
+const CHOKE_CURVE_STEPS = 32;
 
 interface Voice {
   source: AudioBufferSourceNode;
@@ -490,14 +494,28 @@ class AudioEngineImpl {
     return voice;
   }
 
-  /** Sample-accurate 25ms fade on the previous note of a string, at time t. */
+  /**
+   * Sample-accurate 25ms fade on the previous note of a string, at time t.
+   *
+   * A raised-cosine curve (matching offlineRender's chokeGain), not a linear
+   * ramp: a straight ramp has a slope discontinuity at both ends, which on a
+   * still-loud note reads as an audible pop layered under the new note's
+   * onset — most exposed on a hammer re-struck into a pull-off, since that
+   * chain re-strikes the same string before the previous note has decayed
+   * much. The cosine starts and ends at zero slope, so the re-strike sounds
+   * like a mute, not a click.
+   */
   private chokeString(stringIndex: number, t: number): void {
     if (stringIndex < 0) return;
     const prev = this.lastVoiceOnString[stringIndex];
     if (!prev || prev.endTime <= t) return;
     try {
+      const curve = new Float32Array(CHOKE_CURVE_STEPS + 1);
+      for (let i = 0; i <= CHOKE_CURVE_STEPS; i++) {
+        curve[i] = prev.volume * chokeGain(i, 0, CHOKE_CURVE_STEPS);
+      }
       prev.gain.gain.setValueAtTime(prev.volume, t);
-      prev.gain.gain.linearRampToValueAtTime(0, t + CHOKE_FADE_S);
+      prev.gain.gain.setValueCurveAtTime(curve, t, CHOKE_FADE_S);
       prev.source.stop(t + CHOKE_FADE_S + 0.005);
       prev.endTime = t + CHOKE_FADE_S + 0.005;
     } catch {

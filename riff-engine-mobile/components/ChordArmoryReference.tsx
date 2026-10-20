@@ -24,6 +24,8 @@ import {
   spacing,
 } from "../theme/colors";
 import { ChordCard } from "./ChordCard";
+import { ScreenHeading } from "./ScreenHeading";
+import { analog } from "../theme/analog";
 
 const ALL_CHORDS = [
   "Em", "C", "G", "D", "Am", "A", "E", "Dm", "F",
@@ -176,14 +178,10 @@ export function ChordArmoryReference() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Chord Armory</Text>
-        <Text style={styles.subtitle}>
-          tap to audition · long-press for pair hints
-        </Text>
-      </View>
+      <ScreenHeading title="Chord Armory" subtitle="Collect a few shapes. Hear where they lead." />
 
       <View style={styles.progressionContainer}>
+        <Text style={styles.progressionLabel}>Your progression</Text>
         {hasProgression ? (
           <View style={styles.progressionRow}>
             <ScrollView
@@ -207,6 +205,8 @@ export function ChordArmoryReference() {
                       ]}
                       onPress={() => handleRemove(index)}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${chord} at position ${index + 1}`}
                     >
                       <Text
                         style={[
@@ -228,6 +228,8 @@ export function ChordArmoryReference() {
               ]}
               onPress={handlePlayProgression}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={isPlayingProgression ? "Stop progression" : "Play progression"}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
               <Text style={styles.progressionPlayIcon}>
@@ -237,10 +239,11 @@ export function ChordArmoryReference() {
           </View>
         ) : (
           <Text style={styles.placeholder}>
-            Tap cards to build a progression
+            Tap a chord card to add it here.
           </Text>
         )}
       </View>
+      <Text style={styles.cardHint}>Play to listen. Hold a card for pair suggestions.</Text>
 
       <ScrollView
         style={styles.scrollArea}
@@ -275,6 +278,8 @@ export function ChordArmoryReference() {
           style={styles.bottomButton}
           onPress={handleShuffle}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Shuffle progression"
         >
           <Text style={styles.bottomButtonText}>Shuffle</Text>
         </TouchableOpacity>
@@ -283,6 +288,8 @@ export function ChordArmoryReference() {
           onPress={handleClear}
           activeOpacity={0.7}
           disabled={!hasProgression}
+          accessibilityRole="button"
+          accessibilityLabel="Clear progression"
         >
           <Text
             style={[
@@ -303,32 +310,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: chordColors.modalBackground,
   },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  subtitle: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
-    letterSpacing: 0.3,
-  },
+  progressionLabel: { fontSize: 13, fontWeight: "700", color: analog.oxblood, marginBottom: 8 },
+  cardHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, paddingHorizontal: 20, paddingTop: 12, width: "100%", maxWidth: 740, alignSelf: "center" },
   progressionContainer: {
-    backgroundColor: colors.surface,
+    backgroundColor: analog.butter,
+    width: "92%",
+    maxWidth: 700,
+    alignSelf: "center",
     marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    borderRadius: borderRadius.sm,
-    minHeight: 44,
+    borderRadius: borderRadius.lg,
+    minHeight: 86,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    padding: spacing.md,
   },
   progressionRow: {
     flexDirection: "row",
@@ -342,16 +335,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   progressionPlayBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.accent,
     justifyContent: "center",
     alignItems: "center",
     marginLeft: spacing.sm,
   },
   progressionPlayBtnActive: {
-    backgroundColor: colors.card,
+    backgroundColor: analog.indigo,
     borderWidth: 1,
     borderColor: colors.accent,
   },
@@ -361,10 +354,12 @@ const styles = StyleSheet.create({
     marginLeft: 1,
   },
   cardSlot: {
-    width: "47%",
+    width: "48%",
     marginBottom: spacing.md,
   },
   progressionChip: {
+    minHeight: 44,
+    justifyContent: "center",
     borderWidth: 1,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.sm + 2,
@@ -382,7 +377,7 @@ const styles = StyleSheet.create({
   placeholder: {
     color: colors.textMuted,
     fontSize: 13,
-    textAlign: "center",
+    textAlign: "left",
     paddingVertical: spacing.xs,
   },
   scrollArea: {
@@ -390,22 +385,30 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   cardGrid: {
+    width: "100%",
+    maxWidth: 740,
+    alignSelf: "center",
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-evenly",
-    paddingHorizontal: spacing.sm,
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
   bottomBar: {
+    width: "100%",
+    maxWidth: 740,
+    alignSelf: "center",
     flexDirection: "row",
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: colors.background,
   },
   bottomButton: {
+    minHeight: 44,
+    justifyContent: "center",
     flex: 1,
     backgroundColor: colors.card,
     borderRadius: borderRadius.sm,

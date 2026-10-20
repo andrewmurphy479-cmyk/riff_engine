@@ -142,13 +142,13 @@ const styles = StyleSheet.create({
   tipIcon: { marginTop: 2 },
   tipText: { flex: 1 },
   tipLabel: {
-    color: "rgba(255,255,255,0.9)",
+    color: colors.textPrimary,
     fontSize: 12,
     fontWeight: "700",
     marginBottom: 3,
   },
   tipBody: {
-    color: "rgba(255,255,255,0.7)",
+    color: colors.textSecondary,
     fontSize: 12.5,
     lineHeight: 18,
   },

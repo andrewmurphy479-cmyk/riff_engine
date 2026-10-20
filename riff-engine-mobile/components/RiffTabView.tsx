@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Svg, { G, Line, Rect, Text as SvgText } from "react-native-svg";
 import {
+  FEEL_DISPLAY_NAMES,
   PHRASE_LABELS,
   ROLE_COLORS,
   ROLE_ORDER,
@@ -11,6 +12,7 @@ import { midiAt } from "../engine/riff/fretboard";
 import { roleOf } from "../engine/riff/scale";
 import { RiffSpec, Technique } from "../engine/riff/spec";
 import { colors, spacing } from "../theme/colors";
+import { analog } from "../theme/analog";
 
 const TECHNIQUE_GLYPH: Partial<Record<Technique, string>> = {
   hammer: "H",
@@ -42,6 +44,9 @@ interface Props {
   onToggleEmbellishments?: () => void;
   /** Absolute step (0-63) currently playing; null when stopped. */
   activeStep?: number | null;
+  appearance?: "studio" | "analog";
+  /** Show the opening bars without metadata or the role legend. */
+  compact?: boolean;
 }
 
 export function RiffTabView({
@@ -51,15 +56,27 @@ export function RiffTabView({
   showEmbellishments = true,
   onToggleEmbellishments,
   activeStep = null,
+  appearance = "analog",
+  compact = false,
 }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
+  const [availableWidth, setAvailableWidth] = useState(0);
+  const warm = appearance === "analog";
+  const staffColor = warm ? analog.ink : "#ffffff";
+  const secondaryColor = warm ? analog.muted : "rgba(255,255,255,0.5)";
+  const accentColor = warm ? analog.oxblood : colors.accent;
+  const noteBackground = warm ? analog.paper : colors.cardSolid;
+  const roleColors = warm ? analog.roleColors : ROLE_COLORS;
+  const fullRowWidth = LABEL_WIDTH + BARS_PER_ROW * STEPS_PER_BAR * STEP_WIDTH + STEP_WIDTH;
+  const barsPerRow = warm && availableWidth > 0 && availableWidth < fullRowWidth ? 1 : BARS_PER_ROW;
+  const shownBars = compact ? riff.bars.slice(0, barsPerRow) : riff.bars;
 
   const includeBlue = riff.scale.includes("blue");
   const phraseTags =
     PHRASE_LABELS[riff.motif_structure] ?? riff.bars.map(() => "?");
 
-  const rowCount = Math.ceil(riff.bars.length / BARS_PER_ROW);
-  const barsRowWidth = BARS_PER_ROW * STEPS_PER_BAR * STEP_WIDTH;
+  const rowCount = Math.ceil(shownBars.length / barsPerRow);
+  const barsRowWidth = barsPerRow * STEPS_PER_BAR * STEP_WIDTH;
   const svgWidth = LABEL_WIDTH + barsRowWidth + STEP_WIDTH;
   const svgHeight = rowCount * ROW_HEIGHT + (rowCount - 1) * ROW_GAP;
 
@@ -71,7 +88,11 @@ export function RiffTabView({
   const notesPerBar = new Set(riff.bars[0]?.notes.map((n) => n.step) ?? []).size;
 
   const metaBits: string[] = [`${riff.tempo_bpm} BPM`];
-  if (riff.rhythm_name) metaBits.push(riff.rhythm_name);
+  if (warm && riff.feel) {
+    metaBits.push(FEEL_DISPLAY_NAMES[riff.feel] ?? riff.feel.replace(/_/g, " "));
+  } else if (riff.rhythm_name) {
+    metaBits.push(warm ? riff.rhythm_name.replace(/_/g, " ") : riff.rhythm_name);
+  }
   metaBits.push(`${notesPerBar} notes/bar`);
 
   const rolesPresent = new Set<string>();
@@ -85,18 +106,18 @@ export function RiffTabView({
   const visibleRoles = ROLE_ORDER.filter((r) => rolesPresent.has(r));
 
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        <Text style={styles.title}>
+    <View style={[styles.card, warm && warmStyles.card, compact && warmStyles.compact]}>
+      {!compact && <View style={[styles.header, warm && warmStyles.header]}>
+        <Text style={[styles.title, warm && warmStyles.title]}>
           {riff.key} {scalePretty}
         </Text>
         {intervalHint && (
-          <Text style={styles.subtitle}>{intervalHint}</Text>
+          <Text style={[styles.subtitle, warm && warmStyles.secondary]}>{intervalHint}</Text>
         )}
-        <Text style={styles.metaLine}>{metaBits.join("  ·  ")}</Text>
-      </View>
+        <Text style={[styles.metaLine, warm && warmStyles.secondary]}>{metaBits.join("  ·  ")}</Text>
+      </View>}
 
-      <View style={styles.tabWrap}>
+      <View style={styles.tabWrap} onLayout={(event) => setAvailableWidth(Math.max(0, event.nativeEvent.layout.width - spacing.md * 2))}>
         <Svg
           width={svgWidth}
           height={svgHeight}
@@ -104,8 +125,8 @@ export function RiffTabView({
         >
           {Array.from({ length: rowCount }).map((_, rowIdx) => {
             const rowY = rowIdx * (ROW_HEIGHT + ROW_GAP);
-            const barStart = rowIdx * BARS_PER_ROW;
-            const barEnd = Math.min(barStart + BARS_PER_ROW, riff.bars.length);
+            const barStart = rowIdx * barsPerRow;
+            const barEnd = Math.min(barStart + barsPerRow, shownBars.length);
             const barsInRow = barEnd - barStart;
             const rowTotalSteps = barsInRow * STEPS_PER_BAR;
 
@@ -125,7 +146,7 @@ export function RiffTabView({
                       y1={TOP_PADDING}
                       x2={x}
                       y2={TOP_PADDING + STAFF_HEIGHT}
-                      stroke="#ffffff"
+                      stroke={staffColor}
                       strokeWidth={width}
                       opacity={opacity}
                     />
@@ -144,7 +165,7 @@ export function RiffTabView({
                       y={TOP_PADDING - 4}
                       width={STEP_WIDTH}
                       height={STAFF_HEIGHT + 8}
-                      fill={colors.accent}
+                      fill={accentColor}
                       opacity={0.28}
                       rx={2}
                     />
@@ -178,7 +199,7 @@ export function RiffTabView({
                       <SvgText
                         x={bx}
                         y={TOP_PADDING - 10}
-                        fill="rgba(255,255,255,0.5)"
+                        fill={secondaryColor}
                         fontSize={9}
                         fontWeight="700"
                         fontFamily="monospace"
@@ -188,7 +209,7 @@ export function RiffTabView({
                       <SvgText
                         x={bx + 40}
                         y={TOP_PADDING - 10}
-                        fill={colors.accent}
+                        fill={accentColor}
                         fontSize={9}
                         fontWeight="700"
                         fontFamily="monospace"
@@ -209,13 +230,13 @@ export function RiffTabView({
                         y1={y}
                         x2={LABEL_WIDTH + rowTotalSteps * STEP_WIDTH}
                         y2={y}
-                        stroke="rgba(255,255,255,0.10)"
+                        stroke={warm ? analog.line : "rgba(255,255,255,0.10)"}
                         strokeWidth={1}
                       />
                       <SvgText
                         x={LABEL_WIDTH - 6}
                         y={y + 3}
-                        fill="rgba(255,255,255,0.45)"
+                        fill={secondaryColor}
                         fontSize={10}
                         fontWeight="600"
                         textAnchor="end"
@@ -237,7 +258,7 @@ export function RiffTabView({
 
                     const midi = midiAt(note.string, note.fret);
                     const role = roleOf(midi, riff.key, includeBlue) ?? "?";
-                    const color = ROLE_COLORS[role] ?? ROLE_COLORS["?"];
+                    const color = roleColors[role] ?? roleColors["?"];
 
                     const text = String(note.fret);
                     const tw = text.length > 1 ? 13 : 10;
@@ -252,7 +273,7 @@ export function RiffTabView({
                           y={y - 7}
                           width={tw + 2}
                           height={14}
-                          fill={colors.cardSolid}
+                          fill={noteBackground}
                           rx={2}
                         />
                         <SvgText
@@ -270,7 +291,7 @@ export function RiffTabView({
                           <SvgText
                             x={x}
                             y={y - 9}
-                            fill="rgba(255,255,255,0.75)"
+                            fill={warm ? analog.ink : "rgba(255,255,255,0.75)"}
                             fontSize={8}
                             fontWeight="700"
                             textAnchor="middle"
@@ -289,19 +310,21 @@ export function RiffTabView({
         </Svg>
       </View>
 
-      {(visibleRoles.length > 0 || onToggleEmbellishments) && (
-        <View style={styles.legendWrap}>
+      {!compact && (visibleRoles.length > 0 || onToggleEmbellishments) && (
+        <View style={[styles.legendWrap, warm && warmStyles.header]}>
           <View style={styles.legendToggleRow}>
             {visibleRoles.length > 0 ? (
               <TouchableOpacity
                 style={styles.legendToggle}
                 onPress={() => setLegendOpen((v) => !v)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: legendOpen }}
               >
-                <Text style={styles.legendToggleLabel}>
+                <Text style={[styles.legendToggleLabel, warm && warmStyles.legendText]}>
                   {legendOpen ? "Hide legend" : "Show legend"}
                 </Text>
-                <Text style={styles.legendChevron}>{legendOpen ? "▾" : "▸"}</Text>
+                <Text style={[styles.legendChevron, warm && warmStyles.secondary]}>{legendOpen ? "▾" : "▸"}</Text>
               </TouchableOpacity>
             ) : (
               <View />
@@ -311,8 +334,11 @@ export function RiffTabView({
                 style={styles.legendToggle}
                 onPress={onToggleEmbellishments}
                 activeOpacity={0.7}
+                accessibilityRole="switch"
+                accessibilityLabel="Embellishments"
+                accessibilityState={{ checked: showEmbellishments }}
               >
-                <Text style={styles.legendToggleLabel}>
+                <Text style={[styles.legendToggleLabel, warm && warmStyles.legendText]}>
                   {showEmbellishments ? "Embellishments ✓" : "Embellishments"}
                 </Text>
               </TouchableOpacity>
@@ -325,10 +351,10 @@ export function RiffTabView({
                   <View
                     style={[
                       styles.legendDot,
-                      { backgroundColor: ROLE_COLORS[role] },
+                      { backgroundColor: roleColors[role] },
                     ]}
                   />
-                  <Text style={styles.legendLabel}>{role}</Text>
+                  <Text style={[styles.legendLabel, warm && warmStyles.secondary]}>{role}</Text>
                 </View>
               ))}
             </View>
@@ -391,10 +417,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   legendToggle: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   legendToggleLabel: {
@@ -430,4 +457,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: "monospace",
   },
+});
+
+const warmStyles = StyleSheet.create({
+  card: { backgroundColor: analog.paper, borderColor: analog.line, borderRadius: 14 },
+  compact: { marginHorizontal: 0, borderWidth: 0, borderRadius: 0 },
+  header: { borderColor: analog.line, borderBottomColor: analog.line, borderTopColor: analog.line },
+  title: { color: analog.ink, textTransform: "none" },
+  secondary: { color: analog.muted },
+  legendText: { color: analog.oxblood, textTransform: "none", fontSize: 12, letterSpacing: 0 },
 });

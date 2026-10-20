@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, Tabs } from 'expo-router';
-import { TouchableOpacity } from 'react-native';
-import { colors, spacing } from '../../theme/colors';
+import { Tabs } from 'expo-router';
+import { colors } from '../../theme/colors';
+import { analog } from '../../theme/analog';
 
 export const unstable_settings = {
   initialRouteName: 'today',
@@ -32,31 +32,21 @@ export default function TabsLayout() {
         name="today"
         options={{
           title: 'Today',
+          headerShown: false,
+          tabBarStyle: { backgroundColor: analog.paper, borderTopColor: analog.line, borderTopWidth: 1 },
+          tabBarActiveTintColor: analog.oxblood,
+          tabBarInactiveTintColor: analog.muted,
           tabBarLabel: 'Today',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="today-outline" size={size} color={color} />
-          ),
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push('/settings')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ marginRight: spacing.lg }}
-              accessibilityRole="button"
-              accessibilityLabel="Open settings"
-            >
-              <Ionicons
-                name="settings-outline"
-                size={22}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
           ),
         }}
       />
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Riffology',
+          title: 'Create',
+          headerShown: false,
           tabBarLabel: 'Create',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="musical-notes" size={size} color={color} />

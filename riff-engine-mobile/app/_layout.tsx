@@ -34,12 +34,11 @@ export default function RootLayout() {
     AudioEngine.setOutputLatency(playheadOffsetMs);
   }, [playheadOffsetMs]);
 
-  // Hold the splash until both the intro timer and store hydration are done,
-  // so returning users never flash the onboarding screen.
-  if (isLoading || !hydrated) {
+  // Rehydrate before routing; returning players need no added intro delay.
+  if (!hydrated || (isLoading && !onboardingComplete)) {
     return (
       <>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <RiffologyLoadingScreen onFinish={() => setIsLoading(false)} />
       </>
     );
@@ -47,7 +46,7 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerStyle: {

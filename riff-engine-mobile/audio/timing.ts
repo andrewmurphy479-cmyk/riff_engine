@@ -58,9 +58,15 @@ export function polyphonyScale(count: number): number {
  * Gain applied to a ringing note `offset` samples into its own buffer, given
  * that its string is re-struck `chokeAt` samples in.
  *
- * 1 before the re-strike, a linear ramp to 0 across the fade, silent after —
- * the offline equivalent of the live graph's
- * `linearRampToValueAtTime(0, t + CHOKE_FADE_S)`.
+ * 1 before the re-strike, a raised-cosine taper to 0 across the fade, silent
+ * after — the offline equivalent of the live graph's
+ * `setValueCurveAtTime` choke (see AudioEngine.chokeString). A straight
+ * linear ramp has a slope discontinuity at both ends, which on a still-loud
+ * note (a legato hammer re-struck into a pull-off, in particular — that
+ * chain re-strikes the same string within a beat, before the previous note
+ * has decayed much) reads as an audible pop layered under the new note's
+ * onset. The raised cosine starts and ends at zero slope, so the same
+ * re-strike is inaudible as anything but a mute.
  */
 export function chokeGain(
   offset: number,
@@ -70,7 +76,8 @@ export function chokeGain(
   if (offset < chokeAt) return 1;
   const t = offset - chokeAt;
   if (t >= fadeSamples) return 0;
-  return 1 - t / fadeSamples;
+  const phase = t / fadeSamples;
+  return 0.5 * (1 + Math.cos(Math.PI * phase));
 }
 
 /** Strum offset for the nth note of a simultaneous group. */

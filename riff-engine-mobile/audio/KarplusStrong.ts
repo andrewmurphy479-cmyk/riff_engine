@@ -101,12 +101,25 @@ export const DEFAULT_MUTE_PARAMS: MuteParams = {
 function techniqueParams(technique: Technique | undefined, mute: MuteParams) {
   switch (technique) {
     case 'hammer':
-    case 'pull':
+      // A finger striking the fret, not a pick: a soft percussive tap, not
+      // silence — near-zero transientScale made it fade in rather than
+      // articulate. Duller and quieter than a pull-off (no flick).
       return {
         dampingMod: 0.001,      // Slightly longer sustain — legato ring
-        transientScale: 0.05,   // Near-zero pick attack — finger articulation
-        noiseScale: 0.2,        // Very clean excitation
-        toneOffset: -0.18,      // Noticeably warmer
+        transientScale: 0.18,
+        noiseScale: 0.35,       // Impact thud has some broadband noise
+        toneOffset: -0.2,       // Warm, rounded
+        levelScale: 0.82,
+      };
+    case 'pull':
+      // The releasing finger flicks the string — closer to a light pluck
+      // than a hammer's tap, so brighter and a touch louder.
+      return {
+        dampingMod: 0.0005,
+        transientScale: 0.3,
+        noiseScale: 0.5,
+        toneOffset: -0.1,
+        levelScale: 0.88,
       };
     case 'bend':
       return {
@@ -114,6 +127,7 @@ function techniqueParams(technique: Technique | undefined, mute: MuteParams) {
         transientScale: 0.6,
         noiseScale: 0.7,
         toneOffset: 0.05,       // Slightly brighter from tension
+        levelScale: 1.0,
       };
     case 'mute':
       return {
@@ -121,6 +135,7 @@ function techniqueParams(technique: Technique | undefined, mute: MuteParams) {
         transientScale: mute.transientScale,
         noiseScale: mute.noiseScale,
         toneOffset: mute.toneOffset,
+        levelScale: 1.0,
       };
     case 'pluck':
     default:
@@ -129,6 +144,7 @@ function techniqueParams(technique: Technique | undefined, mute: MuteParams) {
         transientScale: 1.0,
         noiseScale: 1.0,
         toneOffset: 0,
+        levelScale: 1.0,
       };
   }
 }
@@ -269,6 +285,13 @@ export function synthesizeMono(opts: SynthOptions): Float32Array<ArrayBuffer> {
   if (effectiveTransient > 0.05) {
     let hpPrev = 0;
     let lpPrev2 = 0;
+    // Every other stage (loop filter, tone filter, body resonance, presence
+    // shelf) is register-aware — this pick-noise burst wasn't, so a hard,
+    // accented pluck on an open bass string got the same bright click as one
+    // on the high strings. Picking a thick low string is duller in reality;
+    // weight the "tame extreme highs" LP toward more smoothing for bass so
+    // the transient thumps instead of buzzing.
+    const transientLpBlend = isBassString ? 0.55 : (isTrebleString ? 0.2 : 0.3);
     for (let i = 0; i < transientSamples; i++) {
       const noise = (Math.random() * 2 - 1);
       // Band-pass: HP to remove lows, then LP to remove harsh highs
@@ -276,7 +299,7 @@ export function synthesizeMono(opts: SynthOptions): Float32Array<ArrayBuffer> {
       hpPrev = lpFiltered;
       const hpFiltered = noise - lpFiltered;
       // Gentle LP to tame extreme highs
-      lpPrev2 = lpPrev2 * 0.3 + hpFiltered * 0.7;
+      lpPrev2 = lpPrev2 * transientLpBlend + hpFiltered * (1 - transientLpBlend);
       // Raised cosine envelope (smoother than sine)
       const phase = i / transientSamples;
       const env = 0.5 * (1 - Math.cos(2 * Math.PI * phase));
@@ -356,7 +379,7 @@ export function synthesizeMono(opts: SynthOptions): Float32Array<ArrayBuffer> {
       sample *= muteEnv * mp.gain;
     }
 
-    mono[i] = sample * vp.amplitude;
+    mono[i] = sample * vp.amplitude * tp.levelScale;
   }
 
   // DC blocker (removes sub-bass rumble <30Hz without killing clarity)
@@ -381,9 +404,20 @@ export function synthesizeMono(opts: SynthOptions): Float32Array<ArrayBuffer> {
     mono[i] += (mono[i] - presLP) * presAmount;
   }
 
-  // Release fade — last 25ms cosine-tapers to silence so the WAV ends at zero,
-  // preventing the speaker-cone snap that causes an end-of-file crackle.
-  const fadeSamples = Math.min(numSamples, Math.floor(SAMPLE_RATE * 0.025));
+  // Release fade — tapers to silence so the buffer ends at zero, preventing
+  // the speaker-cone snap that causes an end-of-file crackle. Low strings
+  // barely decay within their fixed ring window (freqFactor==1 notes are
+  // still ~30% of peak at 3.5s — confirmed by measuring the raw synth output)
+  // — a flat 25ms taper on one of those, unchoked, reads as an abrupt mute
+  // rather than a fade, most audible on a riff's last note where nothing
+  // covers it. Scale the taper by the same freqFactor the damping uses, so
+  // low notes get eased out over longer, higher notes (already decayed to
+  // near-nothing well before buffer end) keep the snappy 25ms.
+  const releaseFadeMs = isMuted ? 25 : 25 + freqFactor * 375;
+  const fadeSamples = Math.min(
+    numSamples,
+    Math.floor((SAMPLE_RATE * releaseFadeMs) / 1000)
+  );
   const fadeStart = numSamples - fadeSamples;
   for (let i = fadeStart; i < numSamples; i++) {
     const phase = (i - fadeStart) / fadeSamples;
