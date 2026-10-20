@@ -16,8 +16,8 @@ Walk top-to-bottom; each section matches a screen/field in App Store Connect. Pa
 | App icon | ✅ Ready | `assets/brand/riffology-icon.png` (1254×1254, RGB, no alpha). The App Store icon comes from the build — nothing to upload separately |
 | Production build uploaded | ❌ **TODO** | `eas build -p ios --profile production` → `eas submit -p ios` |
 | Remove Ads IAP product created | ❌ **TODO** | Section 3 — the app's product ID is fixed in code, so it must match exactly |
-| Privacy Policy + Support pages live | ⚠️ **Drafted** | `LAUNCH/privacy-policy.html` + `LAUNCH/support.html` — replace `{{SUPPORT_EMAIL}}`, then publish to a GitHub Pages repo (section 4) |
-| Support / review email | ❌ **TODO** | Decide an address (Root Word uses `rootwordapp@gmail.com`) |
+| Privacy Policy + Support pages live | ✅ Live | Verified 2026-10-20. Hosted from the public repo `andrewmurphy479-cmyk/riffology-privacy`; sources in `LAUNCH/` |
+| Support / review email | ✅ Ready | `lpkappsstudio@gmail.com` |
 | App Review contact phone | ❌ **TODO** | Same as Root Word |
 
 ---
@@ -91,7 +91,7 @@ The first IAP must be **submitted together with the app version** — after crea
 
 ## 4 — App Privacy  *(must match the privacy policy exactly)*
 
-**Privacy Policy URL** — ⚠️ drafted in `LAUNCH/privacy-policy.html`. Publish it as `index.html` (and `support.html` beside it) in a public `riffology-privacy` repo with GitHub Pages, following `Cross Word Puzzle/LAUNCH/github-pages-setup.md`:
+**Privacy Policy URL** — ✅ live. Served by GitHub Pages from the public repo `andrewmurphy479-cmyk/riffology-privacy` (`index.html` + `support.html` on `main`). `LAUNCH/privacy-policy.html` is the canonical source: edit it, then copy it to the repo as `index.html` and bump "Last updated".
 ```
 https://andrewmurphy479-cmyk.github.io/riffology-privacy/
 ```
@@ -164,7 +164,7 @@ learn,exercises,licks,fretboard,chords,scales,improvisation,metronome,beginner,b
 ```
 https://andrewmurphy479-cmyk.github.io/riffology-privacy/support.html
 ```
-*⚠️ Drafted in `LAUNCH/support.html` — publish beside the privacy policy.*
+*✅ Live.*
 
 ### Marketing URL
 *(optional — leave blank for v1)*
@@ -213,7 +213,7 @@ Select the production build once processing finishes (`eas build -p ios --profil
 | **Sign-in required?** | No |
 | **First / Last name** | Andrew / Murphy |
 | **Phone number** | ❌ TODO |
-| **Email** | ❌ TODO |
+| **Email** | `lpkappsstudio@gmail.com` |
 | **Demo account** | Not required (no login) |
 
 **Notes** (paste into the review notes field):
@@ -256,7 +256,7 @@ Select **"Automatically release this version"** (same as Root Word).
 3. ⚠️ **Age rating + AdMob max ad content rating decided** (section 1)
 4. Pricing = Free, worldwide ✅
 5. ❌ **Remove Ads IAP created**, review screenshot attached (section 3)
-6. ⚠️ **Privacy policy + support pages published** (drafted; fill in the email)
+6. Privacy policy + support pages ✅ live
 7. App Privacy questionnaire ✅ answers ready (section 4)
 8. Promo text / description / keywords / What's New ✅ copy ready
 9. ⚠️ **iPad decision** (section 6), then ❌ **screenshots captured**
