@@ -14,6 +14,7 @@ import { BarActionSheet } from "../../components/BarActionSheet";
 import { FeelSelector } from "../../components/FeelSelector";
 import { KeySelector } from "../../components/KeySelector";
 import { LevelSelector } from "../../components/LevelSelector";
+import { RemoveAdsSheet } from "../../components/RemoveAdsSheet";
 import { RiffActionBar } from "../../components/RiffActionBar";
 import { RiffTabView } from "../../components/RiffTabView";
 import { TempoStepper } from "../../components/TempoStepper";
@@ -22,6 +23,8 @@ import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { useAudioEngine } from "../../audio/AudioEngine";
 import { AudioExporter } from "../../audio/AudioExporter";
 import { TabEvent } from "../../engine/types";
+import { useGenerationAds } from "../../lib/useAds";
+import { useAdStore } from "../../store/useAdStore";
 import { useNewRiffStore } from "../../store/useNewRiffStore";
 import { riffSpecToEvents, stripTechniques } from "../../engine/riff/toEvents";
 import { colors, spacing } from "../../theme/colors";
@@ -50,6 +53,11 @@ export default function HomeScreen() {
   const toggleCountIn = useNewRiffStore((s) => s.toggleCountIn);
   const toggleLock = useNewRiffStore((s) => s.toggleLock);
   const toggleSaveCurrent = useNewRiffStore((s) => s.toggleSaveCurrent);
+
+  const { afterGeneration, removeAdsOfferVisible, closeRemoveAdsOffer } = useGenerationAds();
+  // Once a player has sat through an ad, keep the way out of them in reach.
+  const showRemoveAdsLink = useAdStore((s) => s.interstitialsShown > 0 && !s.adsRemoved);
+  const [removeAdsOpen, setRemoveAdsOpen] = useState(false);
 
   const effectiveBpm = tempoOverride ?? currentRiff?.tempo_bpm ?? 110;
 
@@ -113,7 +121,8 @@ export default function HomeScreen() {
   const handleGenerate = useCallback(() => {
     if (isPlaying) audioEngine.stop();
     generateNewRiff();
-  }, [isPlaying, audioEngine, generateNewRiff]);
+    void afterGeneration();
+  }, [isPlaying, audioEngine, generateNewRiff, afterGeneration]);
 
   const handleLoopToggle = useCallback(() => {
     const next = !isLooping;
@@ -258,6 +267,17 @@ export default function HomeScreen() {
           </View>
         )}
         <Text style={styles.tabHint}>Tap a bar to loop it or try new notes.</Text>
+        {showRemoveAdsLink && (
+          <TouchableOpacity
+            style={styles.removeAdsLink}
+            onPress={() => setRemoveAdsOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Remove ads"
+          >
+            <Ionicons name="sparkles-outline" size={14} color={colors.accent} />
+            <Text style={styles.removeAdsLabel}>Remove ads</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       <TempoStepper
@@ -289,6 +309,14 @@ export default function HomeScreen() {
         onRerollBar={handleRerollBar}
         onClose={() => setBarSheetIdx(null)}
       />
+
+      <RemoveAdsSheet
+        visible={removeAdsOfferVisible || removeAdsOpen}
+        onClose={() => {
+          closeRemoveAdsOffer();
+          setRemoveAdsOpen(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -316,4 +344,6 @@ const styles = StyleSheet.create({
   controlsSummary: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 3 },
   generatorControls: { paddingTop: spacing.sm },
   tabHint: { fontSize: 12, lineHeight: 18, textAlign: "center", color: colors.textMuted, marginTop: spacing.md, paddingHorizontal: spacing.lg },
+  removeAdsLink: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  removeAdsLabel: { color: colors.accent, fontSize: 13, fontWeight: "600" },
 });

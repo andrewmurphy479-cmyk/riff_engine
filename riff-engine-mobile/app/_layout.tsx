@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AudioEngine } from '../audio/AudioEngine';
 import { colors } from '../theme/colors';
 import RiffologyLoadingScreen from '../components/RiffologyLoadingScreen';
+import { initMonetizationOnce } from '../lib/useAds';
 import { useNewRiffStore } from '../store/useNewRiffStore';
 import { usePracticeStore } from '../store/usePracticeStore';
 
@@ -33,6 +34,13 @@ export default function RootLayout() {
   useEffect(() => {
     AudioEngine.setOutputLatency(playheadOffsetMs);
   }, [playheadOffsetMs]);
+
+  // Ads and the store start after onboarding, so the consent form and the iOS
+  // tracking prompt never interrupt the taste check.
+  const appReady = hydrated && onboardingComplete;
+  useEffect(() => {
+    if (appReady) void initMonetizationOnce();
+  }, [appReady]);
 
   // Rehydrate before routing; returning players need no added intro delay.
   if (!hydrated || (isLoading && !onboardingComplete)) {

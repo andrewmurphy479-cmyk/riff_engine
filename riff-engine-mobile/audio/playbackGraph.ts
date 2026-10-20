@@ -94,15 +94,7 @@ class PlaybackGraphImpl {
   async initialize(): Promise<void> {
     if (this.ctx) return;
 
-    // 'playback' plays through the ringer switch, like expo-av's
-    // playsInSilentModeIOS; allow haptics so lib/haptics keeps working
-    // during playback.
-    AudioManager.setAudioSessionOptions({
-      iosCategory: 'playback',
-      iosMode: 'default',
-      iosAllowHaptics: true,
-    });
-    await AudioManager.setAudioSessionActivity(true);
+    await this.claimSession();
 
     // Run the context at the synth's rate so buffer playback never depends on
     // the implementation resampling AudioBuffers to a different context rate.
@@ -141,6 +133,37 @@ class PlaybackGraphImpl {
     this.limiter = limiter;
     this.convolver = convolver;
     this.reverbSend = reverbSend;
+  }
+
+  private async claimSession(): Promise<void> {
+    // 'playback' plays through the ringer switch, like expo-av's
+    // playsInSilentModeIOS; allow haptics so lib/haptics keeps working
+    // during playback.
+    AudioManager.setAudioSessionOptions({
+      iosCategory: 'playback',
+      iosMode: 'default',
+      iosAllowHaptics: true,
+    });
+    await AudioManager.setAudioSessionActivity(true);
+  }
+
+  /**
+   * Take the audio session back after an in-app full-screen ad. Its video
+   * player can change the session category or deactivate it without any
+   * interruption or AppState event reaching observeSession, which would leave
+   * the next riff silent or muted by the ringer switch.
+   */
+  async reclaimSession(): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    try {
+      await this.claimSession();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+    } catch (error) {
+      console.error('[audio] failed to reclaim audio session:', error);
+    }
   }
 
   /**

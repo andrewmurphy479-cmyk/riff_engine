@@ -16,9 +16,20 @@ const STUBBED_MODULES = new Set([
 const stubPath = path.resolve(__dirname, 'lib/audioApiUiStub.js');
 const upstreamResolveRequest = config.resolver.resolveRequest;
 
+// Ad and purchase SDKs have no browser implementation.
+const NATIVE_ONLY_MODULES = new Set([
+  'react-native-google-mobile-ads',
+  'expo-iap',
+  'expo-tracking-transparency',
+]);
+const nativeUnavailablePath = path.resolve(__dirname, 'lib/nativeUnavailable.web.js');
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (STUBBED_MODULES.has(moduleName)) {
     return { type: 'sourceFile', filePath: stubPath };
+  }
+  if (platform === 'web' && NATIVE_ONLY_MODULES.has(moduleName)) {
+    return { type: 'sourceFile', filePath: nativeUnavailablePath };
   }
 
   const resolve = upstreamResolveRequest ?? context.resolveRequest;

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Alert,
   Linking,
@@ -12,6 +12,8 @@ import {
   View,
 } from "react-native";
 import { PlayheadSyncRow } from "../components/PlayheadSyncRow";
+import { RemoveAdsSheet } from "../components/RemoveAdsSheet";
+import { useRemoveAds } from "../lib/useRemoveAds";
 import { GENRES, usePracticeStore } from "../store/usePracticeStore";
 import { useNewRiffStore } from "../store/useNewRiffStore";
 import { borderRadius, colors, spacing, typography } from "../theme/colors";
@@ -59,10 +61,19 @@ export default function SettingsScreen() {
     });
   }, []);
 
-  const handleRestorePurchases = useCallback(() => {
-    // Placeholder until the monetization phase wires up RevenueCat.
-    Alert.alert("Nothing to restore", "Purchases aren't available yet.");
-  }, []);
+  const { adsRemoved, restore } = useRemoveAds();
+  const [removeAdsOpen, setRemoveAdsOpen] = useState(false);
+
+  const handleRestorePurchases = useCallback(async () => {
+    const result = await restore();
+    if (result === "restored") {
+      Alert.alert("Welcome back", "Your purchase has been restored.");
+    } else if (result === "none") {
+      Alert.alert("Nothing to restore", "No previous purchase was found for this account.");
+    } else {
+      Alert.alert("Couldn't reach the store", "Please check your connection and try again.");
+    }
+  }, [restore]);
 
   const version = Constants.expoConfig?.version ?? "1.0.0";
 
@@ -150,6 +161,51 @@ export default function SettingsScreen() {
         <PlayheadSyncRow />
       </View>
 
+      {/* Purchases */}
+      <Text style={styles.sectionLabel}>PURCHASES</Text>
+      <View style={styles.card}>
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => setRemoveAdsOpen(true)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={adsRemoved ? "Ads removed" : "Remove ads"}
+        >
+          <View style={styles.rowText}>
+            <Text style={[styles.rowTitle, !adsRemoved && styles.linkTitle]}>
+              {adsRemoved ? "Ads removed" : "Remove ads"}
+            </Text>
+            <Text style={styles.rowHint}>
+              {adsRemoved
+                ? "Thanks for supporting Riffology"
+                : "One-time purchase, no subscription"}
+            </Text>
+          </View>
+          <Ionicons
+            name={adsRemoved ? "checkmark-circle" : "chevron-forward"}
+            size={18}
+            color={adsRemoved ? colors.success : colors.textMuted}
+          />
+        </TouchableOpacity>
+        <View style={styles.divider} />
+        <TouchableOpacity
+          style={styles.row}
+          onPress={handleRestorePurchases}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Restore purchases"
+        >
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Restore purchases</Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={18}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+      </View>
+
       {/* About */}
       <Text style={styles.sectionLabel}>ABOUT</Text>
       <View style={styles.card}>
@@ -172,26 +228,11 @@ export default function SettingsScreen() {
           </View>
           <Ionicons name="open-outline" size={16} color={colors.textMuted} />
         </TouchableOpacity>
-        <View style={styles.divider} />
-        <TouchableOpacity
-          style={styles.row}
-          onPress={handleRestorePurchases}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Restore purchases"
-        >
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Restore purchases</Text>
-          </View>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color={colors.textMuted}
-          />
-        </TouchableOpacity>
       </View>
 
       <Text style={styles.footerNote}>Riffology · practice riffs, daily</Text>
+
+      <RemoveAdsSheet visible={removeAdsOpen} onClose={() => setRemoveAdsOpen(false)} />
     </ScrollView>
   );
 }

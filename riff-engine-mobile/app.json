@@ -30,7 +30,9 @@
         "backgroundColor": "#FFF9E8"
       },
       "package": "com.riffengine.mobile",
-      "permissions": []
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -48,6 +50,23 @@
           "androidForegroundService": false,
           "disableFFmpeg": true,
           "disableStaticExternalLibs": true
+        }
+      ],
+      "expo-iap",
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This lets Riffology show you more relevant ads while keeping the riff generator free."
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-8042868551988044~1477465638",
+          "skAdNetworkItems": [
+            "cstr6suwn9.skadnetwork"
+          ]
         }
       ]
     ],
