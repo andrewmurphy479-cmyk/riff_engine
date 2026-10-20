@@ -14,11 +14,10 @@
       "backgroundColor": "#FFF9E8"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.riffengine.mobile",
       "infoPlist": {
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         },
         "ITSAppUsesNonExemptEncryption": false

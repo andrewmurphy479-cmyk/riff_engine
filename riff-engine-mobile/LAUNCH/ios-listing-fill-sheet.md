@@ -12,7 +12,7 @@ Walk top-to-bottom; each section matches a screen/field in App Store Connect. Pa
 | Asset | Status | Location / Action |
 |---|---|---|
 | iPhone 6.9" screenshots (1320×2868) | ❌ **TODO** | Capture from the real build — captions + order in section 6 |
-| iPad 13" screenshots (2064×2752) | ❌ **TODO** — or drop iPad | Required while `ios.supportsTablet` is `true` in `app.json`. See the iPad decision in section 6 |
+| iPad 13" screenshots | ✅ Not needed | iPad support is off for v1 (`supportsTablet: false`, 2026-10-20) |
 | App icon | ✅ Ready | `assets/brand/riffology-icon.png` (1254×1254, RGB, no alpha). The App Store icon comes from the build — nothing to upload separately |
 | Production build uploaded | ❌ **TODO** | `eas build -p ios --profile production` → `eas submit -p ios` |
 | Remove Ads IAP product created | ❌ **TODO** | Section 3 — the app's product ID is fixed in code, so it must match exactly |
@@ -191,7 +191,7 @@ Six portrait iPhone shots, captured from the **real build** (Apple rejects mocku
 
 Use the same riff across shots 1–3. Make sure no ad is on screen in any capture. Generating in a dev build shows test ads, so take them before your 5th generation, or after buying Remove Ads with a sandbox account.
 
-> ⚠️ **iPad decision.** `app.json` has `"supportsTablet": true`, so App Store Connect will also require **iPad 13" screenshots (2064×2752)**, and App Review will test on an iPad. The tab layouts haven't been checked on iPad yet. **Recommendation for v1: set `supportsTablet` to `false`.** iPad users can still install the iPhone version; you drop the iPad screenshot set and the iPad review risk, and you can add native iPad support in a later update. This changes the native build, so decide before the production build.
+> ✅ **iPad: decided 2026-10-20 — off for v1** (`"supportsTablet": false`). Only the iPhone 6.9" screenshot set is needed. iPad users can still install the iPhone version; native iPad support can come in an update.
 
 ---
 
@@ -202,7 +202,7 @@ Select the production build once processing finishes (`eas build -p ios --profil
 - **Export compliance:** already answered in the binary (`ITSAppUsesNonExemptEncryption: false`) — no questions.
 - **Copyright:** `© 2026 Andrew Murphy`
 
-> ⚠️ **Before the production build:** `app.json` sets `NSAllowsArbitraryLoads: true`. The app makes no network requests of its own, and the AdMob SDK hasn't needed this for years; it looks like a dev-server leftover. App Review can ask you to justify it. Recommend removing it and keeping only `NSAllowsLocalNetworking` (dev client). Check that the dev client still connects before the production build.
+> ✅ **`NSAllowsArbitraryLoads` removed 2026-10-20.** The app makes no network requests of its own, so the app-wide exception was a dev-server leftover. `NSAllowsLocalNetworking` stays for the dev client. Check once that the dev client still connects.
 
 ---
 
@@ -259,8 +259,8 @@ Select **"Automatically release this version"** (same as Root Word).
 6. Privacy policy + support pages ✅ live
 7. App Privacy questionnaire ✅ answers ready (section 4)
 8. Promo text / description / keywords / What's New ✅ copy ready
-9. ⚠️ **iPad decision** (section 6), then ❌ **screenshots captured**
-10. ⚠️ **`NSAllowsArbitraryLoads` removed** (section 7), then ❌ **production build uploaded and selected**
+9. iPad off ✅, then ❌ **iPhone screenshots captured**
+10. `NSAllowsArbitraryLoads` removed ✅, then ❌ **production build uploaded and selected**
 11. **IAP attached to the version**
 12. Review notes ✅ ready, ❌ phone + email
 13. Automatic release ✅
