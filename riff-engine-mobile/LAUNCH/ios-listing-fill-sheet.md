@@ -97,14 +97,14 @@ https://andrewmurphy479-cmyk.github.io/riffology-privacy/
 ```
 `app/settings.tsx` already links to this URL and to `support.html`, and shows an "Ad privacy choices" row to EEA/UK/Swiss players (Google requires it).
 
-Riffology has **no analytics, no crash reporter, no backend and no account** — AdMob is the only SDK that collects anything. Declare these (all **Not linked** to identity):
+Riffology has **no crash reporter, no backend and no account**. Two SDKs collect data: **AdMob** (ads) and **PostHog** (anonymous first-party product analytics — never identified, not used for advertising, so not ATT tracking; consent-gated where GDPR applies). Declare these (all **Not linked** to identity):
 
 | Data Type | Collected | Linked | Tracking | Purpose | SDK |
 |---|---|---|---|---|---|
-| **Location → Coarse Location** (IP-derived) | Yes | No | No | Third-Party Advertising | AdMob |
-| **Identifiers → Device ID** | Yes | No | **Yes** (only if ATT granted) | Third-Party Advertising, Analytics | AdMob |
+| **Location → Coarse Location** (IP-derived) | Yes | No | No | Third-Party Advertising, Analytics | AdMob; PostHog (country from IP) |
+| **Identifiers → Device ID** | Yes | No | **Yes** (AdMob's IDFA, only if ATT granted) | Third-Party Advertising, Analytics | AdMob (IDFA); PostHog (random install ID, not tracking) |
 | **Usage Data → Advertising Data** | Yes | No | **Yes** (only if ATT granted) | Third-Party Advertising, Analytics | AdMob |
-| **Usage Data → Product Interaction** | Yes | No | No | Third-Party Advertising, Analytics | AdMob (ad taps/views) |
+| **Usage Data → Product Interaction** | Yes | No | No | Third-Party Advertising, Analytics | AdMob (ad taps/views); PostHog (app opens, riffs generated, practice, Remove Ads funnel) |
 | **Diagnostics → Crash Data** | Yes | No | No | App Functionality | AdMob SDK |
 | **Diagnostics → Performance Data** | Yes | No | No | App Functionality | AdMob SDK |
 
@@ -237,9 +237,11 @@ first ad closes, and is always available at Today tab → gear icon
 (Settings) → Purchases → Remove ads. Restore Purchases is in the same
 section.
 
-Third-party services: Google AdMob only (with Google's UMP consent SDK).
-No analytics or crash-reporting SDKs. All disclosed in the privacy policy
-and the App Privacy questionnaire.
+Third-party services: Google AdMob (with Google's UMP consent SDK) and
+PostHog for anonymous first-party product analytics: never identified, not
+used for advertising, and only with consent where GDPR applies. No crash
+reporting. All disclosed in the privacy policy and the App Privacy
+questionnaire.
 ```
 
 ---

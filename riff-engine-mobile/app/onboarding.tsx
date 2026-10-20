@@ -18,6 +18,7 @@ import {
   derivePreferredFeel,
   usePracticeStore,
 } from "../store/usePracticeStore";
+import { track } from "../lib/analytics";
 import { GUITAR_KEYS, useNewRiffStore } from "../store/useNewRiffStore";
 import { borderRadius, colors, spacing, typography } from "../theme/colors";
 
@@ -107,6 +108,11 @@ export default function OnboardingScreen() {
       }
 
       completeOnboarding({ level, genres, preferredFeel });
+      track("onboarding_completed", {
+        level,
+        genre_count: genres.length,
+        preferred_feel: preferredFeel ?? "none",
+      });
       // Seed the Create tab so it reflects the chosen profile.
       setLevelInRiffStore(level);
     },

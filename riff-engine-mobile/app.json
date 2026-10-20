@@ -67,7 +67,8 @@
             "cstr6suwn9.skadnetwork"
           ]
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true

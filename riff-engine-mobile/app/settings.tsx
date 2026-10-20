@@ -14,6 +14,7 @@ import {
 import { PlayheadSyncRow } from "../components/PlayheadSyncRow";
 import { RemoveAdsSheet } from "../components/RemoveAdsSheet";
 import { useRemoveAds } from "../lib/useRemoveAds";
+import { syncAnalyticsConsent, track } from "../lib/analytics";
 import { isAdPrivacyOptionsRequired, showAdPrivacyOptions } from "../monetization/consent";
 import { GENRES, usePracticeStore } from "../store/usePracticeStore";
 import { useNewRiffStore } from "../store/useNewRiffStore";
@@ -80,7 +81,10 @@ export default function SettingsScreen() {
     const shown = await showAdPrivacyOptions();
     if (!shown) {
       Alert.alert("Couldn't open ad choices", "Please check your connection and try again.");
+      return;
     }
+    // Analytics follows the same choices.
+    await syncAnalyticsConsent();
   }, []);
 
   const { adsRemoved, restore } = useRemoveAds();
@@ -88,6 +92,7 @@ export default function SettingsScreen() {
 
   const handleRestorePurchases = useCallback(async () => {
     const result = await restore();
+    track("restore_performed", { entry: "settings", result });
     if (result === "restored") {
       Alert.alert("Welcome back", "Your purchase has been restored.");
     } else if (result === "none") {
@@ -285,7 +290,7 @@ export default function SettingsScreen() {
 
       <Text style={styles.footerNote}>Riffology · practice riffs, daily</Text>
 
-      <RemoveAdsSheet visible={removeAdsOpen} onClose={() => setRemoveAdsOpen(false)} />
+      <RemoveAdsSheet visible={removeAdsOpen} entry="settings" onClose={() => setRemoveAdsOpen(false)} />
     </ScrollView>
   );
 }

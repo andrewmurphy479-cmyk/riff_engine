@@ -19,6 +19,7 @@ import { useAudioEngine } from "../../audio/AudioEngine";
 import { DrillSheet } from "../../components/DrillSheet";
 import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { riffSpecToEvents } from "../../engine/riff/toEvents";
+import { track } from "../../lib/analytics";
 import { hapticSelect, hapticSuccess, hapticTap } from "../../lib/haptics";
 import {
   effectiveStreak,
@@ -122,6 +123,8 @@ export default function TodayScreen() {
       } else {
         hapticSelect();
       }
+      track("session_riff_done", { method: "mark_done", theme: session.theme.id });
+      if (doneAfter === session.goalCount) track("daily_goal_met", { method: "mark_done" });
       markRiffPracticed(idx);
     },
     [session, markRiffPracticed],
@@ -149,6 +152,17 @@ export default function TodayScreen() {
         : 0;
       if (session && !session.completed[idx] && doneAfter >= session.goalCount) {
         hapticSuccess();
+      }
+      track("drill_ended", {
+        finished: result.completed,
+        top_tempo_pct: result.topTempoPct,
+        reps: result.reps,
+        seconds: Math.round(result.seconds),
+      });
+      // A drill credits the riff even when abandoned, so it counts as done.
+      if (session && !session.completed[idx]) {
+        track("session_riff_done", { method: "drill", theme: session.theme.id });
+        if (doneAfter === session.goalCount) track("daily_goal_met", { method: "drill" });
       }
       recordDrillResult(idx, result);
     },

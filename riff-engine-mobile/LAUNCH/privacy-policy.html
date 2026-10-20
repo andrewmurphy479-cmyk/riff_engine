@@ -27,7 +27,7 @@
   <p class="updated">Last updated: October 20, 2026</p>
 
   <h2>Overview</h2>
-  <p>Riffology ("the App") is a guitar practice app developed by Andrew Murphy. The App does not require an account and does not ask for your name, email address, phone number, contacts, photos, or location. Riffs are generated and played on your device. This policy explains the limited data involved in showing ads, how the optional in-app purchase works, and your choices.</p>
+  <p>Riffology ("the App") is a guitar practice app developed by Andrew Murphy. The App does not require an account and does not ask for your name, email address, phone number, contacts, photos, or location. Riffs are generated and played on your device. This policy explains the limited data involved in showing ads and measuring how the App is used, how the optional in-app purchase works, and your choices.</p>
 
   <h2>Data Stored Locally on Your Device</h2>
   <p>The following data is stored on your device only and is never sent to us:</p>
@@ -56,13 +56,27 @@
   </ul>
   <p>Provider: Google LLC. Privacy policy: <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a></p>
 
+  <h2>Product Analytics: PostHog</h2>
+  <p>To understand how Riffology is used in aggregate (for example, how many riffs are generated, which practice features get used, and how often the Remove Ads offer is opened), the App sends anonymous usage events to PostHog. Each event contains:</p>
+  <ul>
+    <li>The name of the action, such as "riff generated" or "daily goal met"</li>
+    <li>Simple categorical details about it, such as skill level, key, feel, or whether a drill was finished</li>
+    <li>Basic technical information: app version, device model, operating system version, and language</li>
+    <li>A random identifier that PostHog generates for this installation of the App</li>
+  </ul>
+  <p>Events never include your name, contact details, Apple ID, your device's advertising identifier, or anything you type. We do not link them to your identity, do not combine them with data from other companies, and do not use or share them for advertising, so they are not "tracking" as Apple defines it. PostHog may use your IP address to estimate the country you are in.</p>
+  <ul>
+    <li><strong>European Economic Area, UK, and Switzerland:</strong> analytics only run if you consent, in Google's consent form, to storing information on your device and to measuring content performance. You can change your choice at any time in Settings → "Ad privacy choices", and analytics follow it.</li>
+  </ul>
+  <p>Provider: PostHog, Inc. Privacy policy: <a href="https://posthog.com/privacy">https://posthog.com/privacy</a></p>
+
   <h2>In-App Purchase: Apple App Store</h2>
   <p>The App offers an optional one-time "Remove Ads" purchase. Payment is processed entirely by Apple; the App never sees your name, Apple ID, billing address, or payment details. The App receives only the state of the purchase (owned, pending, or refunded) so it can turn off ads on your device and restore the purchase on other devices signed into the same App Store account. Refunds are handled by Apple under its standard policies.</p>
   <p>Provider: Apple Inc. Privacy policy: <a href="https://www.apple.com/legal/privacy/">https://www.apple.com/legal/privacy/</a></p>
 
   <h2>What the App Does Not Do</h2>
   <ul>
-    <li>No analytics or crash-reporting services of our own</li>
+    <li>No crash reporting</li>
     <li>No account, login, or cloud sync</li>
     <li>No access to your microphone, camera, contacts, photos, or location. The App plays audio but never records it.</li>
     <li>No notifications</li>
@@ -74,17 +88,18 @@
   </ul>
 
   <h2>Children's Privacy</h2>
-  <p>The App is not directed at children under 13 and does not knowingly collect personal information from children. The App itself collects no personal information from anyone; the advertising data described above is handled by Google AdMob.</p>
+  <p>The App is not directed at children under 13 and does not knowingly collect personal information from children. The App collects no personal information from anyone: the advertising data described above is handled by Google AdMob, and the analytics events sent to PostHog are anonymous.</p>
 
   <h2>Data Sharing and Sale</h2>
-  <p>We do not sell user data. The only third parties involved are Google AdMob, for ads, and Apple, for the optional purchase, each for the purposes described above.</p>
+  <p>We do not sell user data. The only third parties involved are Google AdMob, for ads; PostHog, for anonymous product analytics; and Apple, for the optional purchase. Each receives data only for the purposes described above.</p>
 
   <h2>Data Retention</h2>
-  <p>Data stored on your device is kept until you delete the App. Data processed by Google AdMob and Apple is kept according to their own retention policies, linked above.</p>
+  <p>Data stored on your device is kept until you delete the App. Data processed by Google AdMob, PostHog, and Apple is kept according to their own retention policies, linked above.</p>
 
   <h2>Your Rights and Choices</h2>
   <ul>
-    <li><strong>Delete your data:</strong> uninstalling the App deletes everything it has stored on your device. Because we run no server, there is no other copy to delete.</li>
+    <li><strong>Delete your data:</strong> uninstalling the App deletes everything it has stored on your device. Because we run no server, there is no other copy on our side. Anonymous analytics events in PostHog are not linked to you, so we cannot single out yours, but uninstalling the App ends them, and a reinstall starts with a new random identifier.</li>
+    <li><strong>Analytics (EEA, UK, Switzerland):</strong> withdraw consent at any time in Settings → "Ad privacy choices".</li>
     <li><strong>Opt out of personalised ads:</strong> decline the App Tracking Transparency prompt, use Settings → "Ad privacy choices" in the App where offered, or reset your advertising identifier in your device settings.</li>
     <li><strong>Questions or requests:</strong> email us at the address below.</li>
   </ul>

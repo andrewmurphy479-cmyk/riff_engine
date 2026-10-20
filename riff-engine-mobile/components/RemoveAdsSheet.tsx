@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,12 +10,25 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { track, type AnalyticsEvent } from "../lib/analytics";
+import type { PurchaseOutcome } from "../monetization/iapService";
 import { useRemoveAds } from "../lib/useRemoveAds";
 import { analog } from "../theme/analog";
 import { borderRadius, colors, spacing, typography } from "../theme/colors";
 
+export type RemoveAdsEntry = "after_first_ad" | "create" | "settings";
+
+const PURCHASE_EVENT: Record<PurchaseOutcome["status"], AnalyticsEvent> = {
+  purchased: "purchase_completed",
+  pending: "purchase_pending",
+  cancelled: "purchase_cancelled",
+  error: "purchase_failed",
+};
+
 interface Props {
   visible: boolean;
+  /** Where the sheet was opened from, so analytics can split the funnel. */
+  entry: RemoveAdsEntry;
   onClose: () => void;
 }
 
@@ -26,12 +39,20 @@ const BENEFITS: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
 ];
 
 /** The Remove Ads offer: auto-shown after a player's first ad, and from Settings. */
-export function RemoveAdsSheet({ visible, onClose }: Props) {
+export function RemoveAdsSheet({ visible, entry, onClose }: Props) {
   const { adsRemoved, product, busy, purchase, restore } = useRemoveAds();
   const [pendingNotice, setPendingNotice] = useState(false);
 
+  useEffect(() => {
+    if (visible) track("remove_ads_viewed", { entry, already_removed: adsRemoved });
+    // Once per opening; a purchase flipping adsRemoved isn't a new view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
   const handlePurchase = async () => {
+    track("purchase_started", { entry });
     const outcome = await purchase();
+    track(PURCHASE_EVENT[outcome.status], { entry });
     if (outcome.status === "pending") {
       setPendingNotice(true);
     } else if (outcome.status === "error") {
@@ -43,6 +64,7 @@ export function RemoveAdsSheet({ visible, onClose }: Props) {
 
   const handleRestore = async () => {
     const result = await restore();
+    track("restore_performed", { entry, result });
     if (result === "restored") {
       Alert.alert("Welcome back", "Your purchase has been restored.");
     } else if (result === "none") {

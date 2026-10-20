@@ -3,6 +3,7 @@ import { PlaybackGraph } from "../audio/playbackGraph";
 import { initializeAds, loadInterstitial, showInterstitial } from "../monetization/adService";
 import { requestAdConsent, requestTrackingIfNeeded } from "../monetization/consent";
 import { initIapOnce, isIapAvailable } from "../monetization/iapService";
+import { syncAnalyticsConsent, track } from "./analytics";
 import { useAdStore, whenAdStoreHydrated } from "../store/useAdStore";
 
 let started = false;
@@ -21,6 +22,8 @@ export async function initMonetizationOnce(): Promise<void> {
   void initIapOnce();
   try {
     await requestAdConsent();
+    // The form may have just recorded the player's choice.
+    await syncAnalyticsConsent();
     await requestTrackingIfNeeded();
     await initializeAds();
     // Purchasers never need an interstitial preloaded. A mid-session
@@ -46,6 +49,7 @@ export function useGenerationAds() {
     if (!useAdStore.getState().isInterstitialDue()) return;
 
     const shown = await showInterstitial();
+    track(shown ? "interstitial_shown" : "interstitial_no_fill");
     if (!shown) return;
     void PlaybackGraph.reclaimSession();
 

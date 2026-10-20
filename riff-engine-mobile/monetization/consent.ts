@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import type { ConsentSnapshot } from "../lib/analyticsConsent";
 
 // Guard the native modules — they are absent in Expo Go and on web (see
 // metro.config.js), and the app must still run without ads there.
@@ -71,5 +72,43 @@ export async function showAdPrivacyOptions(): Promise<boolean> {
   } catch (e) {
     if (__DEV__) console.warn("Privacy options form failed:", e);
     return false;
+  }
+}
+
+/**
+ * Refresh the consent status from Google without showing anything, so the
+ * player's region is known before the consent form's turn after onboarding.
+ */
+export async function refreshAdConsentInfo(): Promise<void> {
+  if (!AdsConsent) return;
+  try {
+    await AdsConsent.requestInfoUpdate();
+  } catch (e) {
+    if (__DEV__) console.warn("Ad consent info refresh failed:", e);
+  }
+}
+
+/** The consent facts analytics decides on; null without the consent SDK. */
+export async function getConsentSnapshot(): Promise<ConsentSnapshot | null> {
+  if (!AdsConsent) return null;
+  try {
+    const { status } = await AdsConsent.getConsentInfo();
+    const gdprApplies = await AdsConsent.getGdprApplies();
+    let storeAndAccessInformationOnDevice = false;
+    let measureContentPerformance = false;
+    if (gdprApplies && status === "OBTAINED") {
+      const choices = await AdsConsent.getUserChoices();
+      storeAndAccessInformationOnDevice = !!choices.storeAndAccessInformationOnDevice;
+      measureContentPerformance = !!choices.measureContentPerformance;
+    }
+    return { status, gdprApplies, storeAndAccessInformationOnDevice, measureContentPerformance };
+  } catch (e) {
+    if (__DEV__) console.warn("Consent snapshot failed:", e);
+    return {
+      status: "UNKNOWN",
+      gdprApplies: true,
+      storeAndAccessInformationOnDevice: false,
+      measureContentPerformance: false,
+    };
   }
 }

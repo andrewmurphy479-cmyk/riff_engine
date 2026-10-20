@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["engine/**/*.test.ts", "audio/**/*.test.ts", "store/**/*.test.ts"],
+    include: ["engine/**/*.test.ts", "audio/**/*.test.ts", "store/**/*.test.ts", "lib/**/*.test.ts"],
     alias: {
       // Store tests exercise the real persist middleware; without a backing
       // store every write rejects and the failures are silently swallowed.

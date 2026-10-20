@@ -23,6 +23,7 @@ import { FEEL_DISPLAY_NAMES } from "../../engine/riff/display";
 import { useAudioEngine } from "../../audio/AudioEngine";
 import { AudioExporter } from "../../audio/AudioExporter";
 import { TabEvent } from "../../engine/types";
+import { track } from "../../lib/analytics";
 import { useGenerationAds } from "../../lib/useAds";
 import { useAdStore } from "../../store/useAdStore";
 import { useNewRiffStore } from "../../store/useNewRiffStore";
@@ -111,6 +112,7 @@ export default function HomeScreen() {
     playheadOffsetRef.current = 0;
     const bars = currentRiff.bars.length;
     lastPlayedRef.current = { events: playEvents, loop: isLooping, bars };
+    track("riff_played", { looping: isLooping });
     audioEngine.play(playEvents, effectiveBpm, isLooping, {
       countIn: countInEnabled,
       metronome: metronomeEnabled,
@@ -121,6 +123,14 @@ export default function HomeScreen() {
   const handleGenerate = useCallback(() => {
     if (isPlaying) audioEngine.stop();
     generateNewRiff();
+    const s = useNewRiffStore.getState();
+    track("riff_generated", {
+      level: s.level,
+      key: s.currentRiff?.key ?? s.key,
+      feel: s.currentRiff?.feel ?? "any",
+      key_locked: s.lockedFields.key,
+      feel_locked: s.lockedFields.feel,
+    });
     void afterGeneration();
   }, [isPlaying, audioEngine, generateNewRiff, afterGeneration]);
 
@@ -143,6 +153,7 @@ export default function HomeScreen() {
       const barEvents = showEmbellishments ? filtered : stripTechniques(filtered);
       if (barEvents.length === 0) return;
       setIsLooping(true);
+      track("bar_looped");
       playheadOffsetRef.current = startStep;
       lastPlayedRef.current = { events: barEvents, loop: true, bars: 1 };
       audioEngine.play(barEvents, effectiveBpm, true, {
@@ -193,6 +204,7 @@ export default function HomeScreen() {
           mimeType: "audio/wav",
           dialogTitle: "Share riff",
         });
+        track("riff_shared");
       } else {
         Alert.alert("Sharing unavailable", "Sharing isn't supported on this device.");
       }
@@ -210,6 +222,7 @@ export default function HomeScreen() {
     (barIdx: number) => {
       if (isPlaying) audioEngine.stop();
       rerollBar(barIdx);
+      track("bar_rerolled");
     },
     [isPlaying, audioEngine, rerollBar],
   );
@@ -217,6 +230,11 @@ export default function HomeScreen() {
   const isSaved = currentRiff
     ? savedRiffs.some((r) => r.seed === currentRiff.seed)
     : false;
+
+  const handleSaveToggle = useCallback(() => {
+    if (!isSaved) track("riff_saved");
+    toggleSaveCurrent();
+  }, [isSaved, toggleSaveCurrent]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -298,7 +316,7 @@ export default function HomeScreen() {
         disabled={!currentRiff}
         onPlayToggle={handlePlayToggle}
         onGenerate={handleGenerate}
-        onSaveToggle={toggleSaveCurrent}
+        onSaveToggle={handleSaveToggle}
         onLoopToggle={handleLoopToggle}
         onShare={handleShare}
       />
@@ -312,6 +330,7 @@ export default function HomeScreen() {
 
       <RemoveAdsSheet
         visible={removeAdsOfferVisible || removeAdsOpen}
+        entry={removeAdsOfferVisible ? "after_first_ad" : "create"}
         onClose={() => {
           closeRemoveAdsOffer();
           setRemoveAdsOpen(false);
