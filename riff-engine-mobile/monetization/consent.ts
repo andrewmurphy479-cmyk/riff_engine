@@ -46,3 +46,30 @@ export async function requestTrackingIfNeeded(): Promise<void> {
     if (__DEV__) console.warn("Tracking permission request failed:", e);
   }
 }
+
+/**
+ * Whether this player's region requires an in-app way to change ad consent
+ * (EEA, UK, Switzerland). Google's policy requires the entry point there; it
+ * is hidden everywhere else. False until requestAdConsent has run.
+ */
+export async function isAdPrivacyOptionsRequired(): Promise<boolean> {
+  if (!AdsConsent) return false;
+  try {
+    const info = await AdsConsent.getConsentInfo();
+    return info.privacyOptionsRequirementStatus === "REQUIRED";
+  } catch {
+    return false;
+  }
+}
+
+/** Reopen Google's consent form so the player can change their choice. */
+export async function showAdPrivacyOptions(): Promise<boolean> {
+  if (!AdsConsent) return false;
+  try {
+    await AdsConsent.showPrivacyOptionsForm();
+    return true;
+  } catch (e) {
+    if (__DEV__) console.warn("Privacy options form failed:", e);
+    return false;
+  }
+}

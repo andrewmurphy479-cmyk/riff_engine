@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Linking,
@@ -14,11 +14,13 @@ import {
 import { PlayheadSyncRow } from "../components/PlayheadSyncRow";
 import { RemoveAdsSheet } from "../components/RemoveAdsSheet";
 import { useRemoveAds } from "../lib/useRemoveAds";
+import { isAdPrivacyOptionsRequired, showAdPrivacyOptions } from "../monetization/consent";
 import { GENRES, usePracticeStore } from "../store/usePracticeStore";
 import { useNewRiffStore } from "../store/useNewRiffStore";
 import { borderRadius, colors, spacing, typography } from "../theme/colors";
 
-const PRIVACY_POLICY_URL = "https://riffengine.app/privacy"; // placeholder until the static site exists
+const PRIVACY_POLICY_URL = "https://andrewmurphy479-cmyk.github.io/riffology-privacy/";
+const SUPPORT_URL = "https://andrewmurphy479-cmyk.github.io/riffology-privacy/support.html";
 
 function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -55,10 +57,30 @@ export default function SettingsScreen() {
     );
   }, [resetOnboarding]);
 
-  const handlePrivacy = useCallback(() => {
-    Linking.openURL(PRIVACY_POLICY_URL).catch(() => {
-      Alert.alert("Couldn't open link", PRIVACY_POLICY_URL);
+  const openLink = useCallback((url: string) => {
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Couldn't open link", url);
     });
+  }, []);
+
+  // Only players in regions that require it (EEA, UK, Switzerland) get the
+  // row; Google's policy requires a way to change consent there.
+  const [adPrivacyRequired, setAdPrivacyRequired] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    isAdPrivacyOptionsRequired().then((required) => {
+      if (mounted) setAdPrivacyRequired(required);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleAdPrivacy = useCallback(async () => {
+    const shown = await showAdPrivacyOptions();
+    if (!shown) {
+      Alert.alert("Couldn't open ad choices", "Please check your connection and try again.");
+    }
   }, []);
 
   const { adsRemoved, restore } = useRemoveAds();
@@ -218,7 +240,7 @@ export default function SettingsScreen() {
         <View style={styles.divider} />
         <TouchableOpacity
           style={styles.row}
-          onPress={handlePrivacy}
+          onPress={() => openLink(PRIVACY_POLICY_URL)}
           activeOpacity={0.7}
           accessibilityRole="link"
           accessibilityLabel="Privacy policy"
@@ -228,6 +250,37 @@ export default function SettingsScreen() {
           </View>
           <Ionicons name="open-outline" size={16} color={colors.textMuted} />
         </TouchableOpacity>
+        <View style={styles.divider} />
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => openLink(SUPPORT_URL)}
+          activeOpacity={0.7}
+          accessibilityRole="link"
+          accessibilityLabel="Help and support"
+        >
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Help & support</Text>
+          </View>
+          <Ionicons name="open-outline" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+        {adPrivacyRequired && (
+          <>
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={styles.row}
+              onPress={handleAdPrivacy}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Ad privacy choices"
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>Ad privacy choices</Text>
+                <Text style={styles.rowHint}>Change your personalised-ads consent</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       <Text style={styles.footerNote}>Riffology · practice riffs, daily</Text>
