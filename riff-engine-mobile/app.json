@@ -45,6 +45,7 @@
         "react-native-audio-api",
         {
           "iosBackgroundMode": false,
+          "iosMicrophonePermission": "Riffology plays riffs through your speakers and never records audio. iOS requires this note because the audio engine includes recording support.",
           "androidPermissions": [],
           "androidForegroundService": false,
           "disableFFmpeg": true,
